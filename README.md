@@ -34,16 +34,45 @@ Maven downloads the Kotlin compiler and test dependencies during the first build
 │       └── LexerTest.kt               Automated lexer tests
 ├── docs/
 │   └── lexer-presentation.pdf        Lexer presentation
+├── Makefile                           Short development commands
 ├── pom.xml                            Maven build configuration
 └── README.md
 ```
+
+## Quick start
+
+Show all available commands:
+
+```bash
+make help
+```
+
+Tokenize the included example:
+
+```bash
+make run
+```
+
+Tokenize another file:
+
+```bash
+make run FILE=path/to/program.o
+```
+
+Save the token table to a file:
+
+```bash
+make tokens FILE=path/to/program.o OUT=results/program.tokens
+```
+
+If `FILE` is omitted, `examples/demo.o` is used. If `OUT` is omitted, the result is written to `tokens.txt`.
 
 ## Build and test
 
 Run all automated tests:
 
 ```bash
-mvn test
+make test
 ```
 
 The current test suite contains 19 tests covering keywords, literals, operators, comments, source positions, maximal munch, complete class input, and lexical errors.
@@ -53,19 +82,19 @@ The current test suite contains 19 tests covering keywords, literals, operators,
 Tokenize the included example:
 
 ```bash
-mvn -q compile exec:java -Dexec.args="examples/demo.o"
+make run
 ```
 
 Tokenize another file:
 
 ```bash
-mvn -q compile exec:java -Dexec.args="path/to/program.o"
+make run FILE=path/to/program.o
 ```
 
 To read source code from standard input, run the lexer without a file argument and finish the input with `Ctrl+D`:
 
 ```bash
-mvn -q compile exec:java
+make stdin
 ```
 
 The output contains the token type, source position, and original lexeme:
