@@ -1,0 +1,12 @@
+class Counter is
+    var value : 0
+
+    this is
+        var limit : 5
+        while value < limit loop
+            value := value + 1
+        end
+    end
+
+    method doubled : Integer => value * 2
+end
