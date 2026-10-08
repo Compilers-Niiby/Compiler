@@ -1,135 +1,111 @@
 # Niiby O Compiler
 
-A compiler construction course project that translates the object-oriented O language to Jasmin assembly. The compiler is written in Kotlin and currently contains a complete handwritten lexer.
-
-## Project status
-
-- Lexer: implemented and tested
-- Parser: not implemented yet
-- Semantic analysis: not implemented yet
-- Jasmin code generation: not implemented yet
+A compiler construction course project written in Kotlin. The lexer converts O source code into tokens, and the syntax analyzer builds an abstract syntax tree (AST). Semantic analysis and Jasmin code generation are planned for later stages.
 
 ## Requirements
 
-- JDK 17 or newer
+- JDK 25
 - Maven 3.9 or newer
 
-Maven downloads the Kotlin compiler and test dependencies during the first build.
+The project uses Kotlin 2.3.0 and targets Java 25. [Kotlin 2.3.0 supports Java 25 bytecode](https://kotlinlang.org/docs/whatsnew23.html#kotlin-jvm-support-for-java-25). To select an installed JDK 25 on macOS:
 
-## Repository structure
-
-```text
-.
-├── examples/
-│   └── demo.o                         Example O program
-├── src/
-│   ├── main/kotlin/team/niiby/compiler/
-│   │   ├── Main.kt                    Command-line entry point
-│   │   └── lexer/
-│   │       ├── Lexer.kt               Scanner implementation
-│   │       ├── LexerException.kt      Lexical error type
-│   │       ├── Token.kt               Token and source positions
-│   │       └── TokenType.kt           Supported token types
-│   └── test/kotlin/team/niiby/compiler/lexer/
-│       └── LexerTest.kt               Automated lexer tests
-├── docs/
-│   └── lexer-presentation.pdf        Lexer presentation
-├── Makefile                           Short development commands
-├── pom.xml                            Maven build configuration
-└── README.md
+```bash
+export JAVA_HOME=$(/usr/libexec/java_home -v 25)
 ```
+
+Use JDK 25 as the project SDK and Maven runtime in IntelliJ IDEA. Maven downloads the Kotlin compiler and test dependencies during the first build.
 
 ## Quick start
 
-Show all available commands:
-
 ```bash
+make test
+make run                         # Tokenize examples/demo.o
+make parse                       # Parse examples/demo.o and print its AST
+make parse FILE=examples/syntax.o # Parse the larger syntax example
 make help
 ```
 
-Tokenize the included example:
+`examples/syntax.o` includes inheritance, constructors, methods, nested control flow, generic types, and the team's `for` extension.
 
-```bash
-make run
-```
+## Command-line modes
 
-Tokenize another file:
+The default mode prints tokens:
 
 ```bash
 make run FILE=path/to/program.o
-```
-
-Save the token table to a file:
-
-```bash
 make tokens FILE=path/to/program.o OUT=results/program.tokens
-```
-
-If `FILE` is omitted, `examples/demo.o` is used. If `OUT` is omitted, the result is written to `tokens.txt`.
-
-## Build and test
-
-Run all automated tests:
-
-```bash
-make test
-```
-
-The current test suite contains 19 tests covering keywords, literals, operators, comments, source positions, maximal munch, complete class input, and lexical errors.
-
-## Run the lexer
-
-Tokenize the included example:
-
-```bash
-make run
-```
-
-Tokenize another file:
-
-```bash
-make run FILE=path/to/program.o
-```
-
-To read source code from standard input, run the lexer without a file argument and finish the input with `Ctrl+D`:
-
-```bash
 make stdin
 ```
 
-The output contains the token type, source position, and original lexeme:
+Parse a file and inspect or save its AST:
 
-```text
-TYPE                 POSITION           LEXEME
---------------------------------------------------------------
-CLASS                1:1                class
-IDENTIFIER           1:7                Counter
-IS                   1:15               is
+```bash
+make parse FILE=path/to/program.o
+make ast FILE=path/to/program.o OUT=results/program.ast
 ```
 
-## Supported lexical elements
+`FILE` defaults to `examples/demo.o`. The default output file is `tokens.txt` for `make tokens` and `ast.txt` for `make ast`.
 
-- O keywords such as `class`, `extends`, `var`, `method`, `while`, `if`, and `return`
-- integer, real, and boolean literals
-- identifiers, including identifiers with Unicode letters
-- parentheses, brackets, commas, colons, and member-access dots
-- `:=` and `=>`
-- arithmetic and comparison operators: `+`, `-`, `*`, `/`, `<`, `>`, `<=`, `>=`, and `==`
-- Team Niiby extension keywords: `for` and `in`
-- line comments (`//`) and block comments (`/* ... */`)
+The entry point accepts `[--tokens|--parse] [source-file]`. Without a file, it reads standard input:
 
-The lexer applies maximal munch. For example, `<=` is emitted as one token. A dot becomes part of a real literal only when a digit follows it, so `2.Plus(3)` is emitted as an integer, a dot, and an identifier.
+```bash
+printf 'class Empty is end\n' | mvn -q compile exec:java -Dexec.args="--parse"
+mvn -q compile exec:java -Dexec.args="--help"
+```
+
+AST output includes each node's starting line and column:
+
+```text
+Program @ 1:1
+  Class Empty @ 1:1
+    Type Empty @ 1:7
+```
+
+The Kotlin API is `Parser(Lexer(source).tokenize()).parse()`. Every AST node retains its full source span, including offsets and end positions.
+
+## Supported syntax
+
+- Classes with optional inheritance and nested generic type arguments
+- Fields and local variables initialized with `var name : expression`
+- Constructors and methods with optional typed parameter lists
+- Method bodies written as `is ... end` or `=> expression`
+- Assignment, `while`, `if`/`else`, `return`, and `for name in expression loop ... end`
+- Integer, real, and boolean literals; names; `this`; member access; chained calls; and generic constructor calls
+- Arithmetic and comparison operators, unary `+`/`-`, and parentheses
+
+The parser uses recursive descent. Operators are parsed in precedence order, and binary operators at the same level associate to the left. The lexer skips whitespace and comments, so newlines do not separate statements. An optional return value is consumed whenever the following token can start an expression.
+
+The local lectures explain parsing and AST construction but do not provide a formal O language specification.
 
 ## Error handling
 
-Unexpected characters, malformed numeric exponents, and unterminated block comments produce a `LexerException` with an exact line and column:
+Lexical and syntax errors report a line and column and exit with status `1`. File-reading errors also exit with status `1`; invalid command-line arguments exit with status `2`.
 
 ```text
 Lexical error: Unexpected character '@' at 2:17
 ```
 
-The lexer only validates lexical structure. Grammar validation belongs to the future parser.
+Syntax diagnostics describe what was expected and identify the unexpected token or end of input. The parser stops at the first error. Name resolution, type checking, duplicate declarations, and return-type validation belong to semantic analysis.
 
-## Presentation
+## Repository structure
 
-- `docs/lexer-presentation.pdf`
+```text
+examples/
+  demo.o                   Original lexer example
+  syntax.o                 Syntax analyzer example
+src/main/kotlin/team/niiby/compiler/
+  Main.kt                  Token and AST command-line modes
+  lexer/                   Scanner, tokens, and source positions
+  parser/
+    Ast.kt                 AST data classes
+    Parser.kt              Recursive-descent syntax analyzer
+    ParserException.kt     Syntax diagnostics
+    AstPrinter.kt          Readable AST outline
+src/test/kotlin/team/niiby/compiler/
+  lexer/                   Lexer tests
+  parser/                  Parser and AST output tests
+Makefile                   Build, test, and run commands
+pom.xml                    Maven configuration
+```
+
+Lecture PDFs and the earlier lexer presentation remain local reference files and are ignored by Git.
