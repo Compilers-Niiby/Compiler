@@ -75,7 +75,7 @@ The Kotlin API is `Parser(Lexer(source).tokenize()).parse()`. Every AST node ret
 
 The parser uses recursive descent. Operators are parsed in precedence order, and binary operators at the same level associate to the left. The lexer skips whitespace and comments, so newlines do not separate statements. An optional return value is consumed whenever the following token can start an expression.
 
-The local lectures explain parsing and AST construction but do not provide a formal O language specification. The [syntax analyzer report](docs/syntax-analyzer.md) records the implemented grammar and the assumptions made from the existing lexer and examples.
+The local lectures explain parsing and AST construction but do not provide a formal O language specification.
 
 ## Error handling
 
@@ -104,7 +104,6 @@ src/main/kotlin/team/niiby/compiler/
 src/test/kotlin/team/niiby/compiler/
   lexer/                   Lexer tests
   parser/                  Parser and AST output tests
-docs/syntax-analyzer.md     Grammar, design, and report notes
 Makefile                   Build, test, and run commands
 pom.xml                    Maven configuration
 ```
