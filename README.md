@@ -4,16 +4,16 @@ A compiler construction course project written in Kotlin. The lexer converts O s
 
 ## Requirements
 
-- JDK 17 or 21
+- JDK 25
 - Maven 3.9 or newer
 
-The project targets Java 17. The Kotlin 1.9.25 compiler fails on the installed Java 25 runtime. If Java 25 is your default on macOS, select Java 17 before building:
+The project uses Kotlin 2.3.0 and targets Java 25. [Kotlin 2.3.0 supports Java 25 bytecode](https://kotlinlang.org/docs/whatsnew23.html#kotlin-jvm-support-for-java-25). To select an installed JDK 25 on macOS:
 
 ```bash
-export JAVA_HOME=$(/usr/libexec/java_home -v 17)
+export JAVA_HOME=$(/usr/libexec/java_home -v 25)
 ```
 
-Maven downloads the Kotlin compiler and test dependencies during the first build.
+Use JDK 25 as the project SDK and Maven runtime in IntelliJ IDEA. Maven downloads the Kotlin compiler and test dependencies during the first build.
 
 ## Quick start
 
