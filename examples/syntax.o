@@ -1,0 +1,37 @@
+class Counter extends Object is
+    var value : 0
+
+    this(initial : Integer) is
+        value := initial
+    end
+
+    method add(amount : Integer) : Integer is
+        value := value + amount
+        return value
+    end
+
+    method doubled : Integer => value * 2
+
+    method count(limit : Integer) is
+        while value < limit loop
+            if value == 0 then
+                value := 2.Plus(3)
+            else
+                value := value + 1
+            end
+        end
+        return
+    end
+end
+
+class Batch[T] is
+    var values : List[T]()
+
+    method total : Integer is
+        var sum : 0
+        for item in values loop
+            sum := sum + item
+        end
+        return sum
+    end
+end
