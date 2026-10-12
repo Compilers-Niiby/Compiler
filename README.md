@@ -1,42 +1,42 @@
-# Niiby O Compiler
+# Компилятор O команды Niiby
 
-A compiler construction course project written in Kotlin. The lexer converts O source code into tokens, and the syntax analyzer builds an abstract syntax tree (AST). Semantic analysis and Jasmin code generation are planned for later stages.
+Учебный проект по разработке компилятора на Kotlin. Лексер разбивает исходный код языка O на токены, а синтаксический анализатор строит абстрактное синтаксическое дерево (AST). Семантический анализ и генерация кода Jasmin запланированы на следующие этапы.
 
-- [Quick start](#quick-start)
-- [Code walkthrough](#code-walkthrough)
-- [UML class diagrams](#uml-class-diagrams)
-- [Parse-mode sequence](#parse-mode-sequence)
-- [Implemented grammar](#implemented-grammar)
-- [Verification](#verification)
+- [Быстрый запуск](#быстрый-запуск)
+- [Разбор кода](#разбор-кода)
+- [UML-диаграммы классов](#uml-диаграммы-классов)
+- [Диаграмма последовательности для режима разбора](#диаграмма-последовательности-для-режима-разбора)
+- [Реализованная грамматика](#реализованная-грамматика)
+- [Проверка](#проверка)
 
-## Requirements
+## Требования
 
 - JDK 25
-- Maven 3.9 or newer
+- Maven 3.9 или новее
 
-The project uses Kotlin 2.3.0 and targets Java 25. [Kotlin 2.3.0 supports Java 25 bytecode](https://kotlinlang.org/docs/whatsnew23.html#kotlin-jvm-support-for-java-25). To select an installed JDK 25 on macOS:
+Проект использует Kotlin 2.3.0 и собирается для Java 25. [Kotlin 2.3.0 поддерживает байткод Java 25](https://kotlinlang.org/docs/whatsnew23.html#kotlin-jvm-support-for-java-25). Чтобы выбрать установленный JDK 25 на macOS:
 
 ```bash
 export JAVA_HOME=$(/usr/libexec/java_home -v 25)
 ```
 
-Use JDK 25 as the project SDK and Maven runtime in IntelliJ IDEA. Maven downloads the Kotlin compiler and test dependencies during the first build.
+В IntelliJ IDEA выберите JDK 25 как SDK проекта и среду запуска Maven. При первой сборке Maven загрузит компилятор Kotlin и зависимости для тестов.
 
-## Quick start
+## Быстрый запуск
 
 ```bash
 make test
-make run                         # Tokenize examples/demo.o
-make parse                       # Parse examples/demo.o and print its AST
-make parse FILE=examples/syntax.o # Parse the larger syntax example
+make run                         # Разбить examples/demo.o на токены
+make parse                       # Разобрать examples/demo.o и вывести AST
+make parse FILE=examples/syntax.o # Разобрать расширенный пример синтаксиса
 make help
 ```
 
-`examples/syntax.o` includes inheritance, constructors, methods, nested control flow, generic types, and the team's `for` extension.
+В `examples/syntax.o` показаны наследование, конструкторы, методы, вложенные циклы и условия, обобщённые типы и расширение `for`, добавленное командой.
 
-## Command-line modes
+## Режимы командной строки
 
-The default mode prints tokens:
+По умолчанию программа выводит токены:
 
 ```bash
 make run FILE=path/to/program.o
@@ -44,23 +44,23 @@ make tokens FILE=path/to/program.o OUT=results/program.tokens
 make stdin
 ```
 
-Parse a file and inspect or save its AST:
+Чтобы разобрать файл и вывести или сохранить AST:
 
 ```bash
 make parse FILE=path/to/program.o
 make ast FILE=path/to/program.o OUT=results/program.ast
 ```
 
-`FILE` defaults to `examples/demo.o`. The default output file is `tokens.txt` for `make tokens` and `ast.txt` for `make ast`.
+По умолчанию `FILE` указывает на `examples/demo.o`. Команда `make tokens` сохраняет результат в `tokens.txt`, а `make ast` записывает дерево в `ast.txt`.
 
-The entry point accepts `[--tokens|--parse] [source-file]`. Without a file, it reads standard input:
+Точка входа принимает аргументы `[--tokens|--parse] [source-file]`. Если файл не указан, программа читает стандартный ввод:
 
 ```bash
 printf 'class Empty is end\n' | mvn -q compile exec:java -Dexec.args="--parse"
 mvn -q compile exec:java -Dexec.args="--help"
 ```
 
-AST output includes each node's starting line and column:
+В выводе AST у каждого узла указаны строка и столбец его начала:
 
 ```text
 Program @ 1:1
@@ -68,37 +68,37 @@ Program @ 1:1
     Type Empty @ 1:7
 ```
 
-The Kotlin API is `Parser(Lexer(source).tokenize()).parse()`. Every AST node retains its full source span, including offsets and end positions.
+Вызов через Kotlin API: `Parser(Lexer(source).tokenize()).parse()`. Каждый узел AST хранит полный диапазон исходного текста, включая смещения и конечную позицию.
 
-## Supported syntax
+## Поддерживаемый синтаксис
 
-- Classes with optional inheritance and nested generic type arguments
-- Fields and local variables initialized with `var name : expression`
-- Constructors and methods with optional typed parameter lists
-- Method bodies written as `is ... end` or `=> expression`
-- Assignment, `while`, `if`/`else`, `return`, and `for name in expression loop ... end`
-- Integer, real, and boolean literals; names; `this`; member access; chained calls; and generic constructor calls
-- Arithmetic and comparison operators, unary `+`/`-`, and parentheses
+- Классы с необязательным наследованием и вложенными аргументами обобщённых типов
+- Поля и локальные переменные с инициализацией `var name : expression`
+- Конструкторы и методы с необязательными списками типизированных параметров
+- Тела методов в форме `is ... end` или `=> expression`
+- Присваивание, `while`, `if`/`else`, `return` и `for name in expression loop ... end`
+- Целочисленные, вещественные и логические литералы; имена; `this`; доступ к членам; цепочки вызовов и вызовы конструкторов с аргументами типов
+- Арифметические операции, сравнения, унарные `+`/`-` и скобки
 
-The parser uses recursive descent. Operators are parsed in precedence order, and binary operators at the same level associate to the left.
+Парсер использует рекурсивный спуск. Операторы разбираются с учётом приоритета, а бинарные операции одного уровня группируются слева направо.
 
-The local lectures explain parsing and AST construction but do not provide a formal O language specification.
+Локальные лекции объясняют синтаксический анализ и построение AST, но не содержат формальной спецификации языка O.
 
-## Error handling
+## Обработка ошибок
 
-Lexical and syntax errors report a line and column and exit with status `1`. File-reading errors also exit with status `1`; invalid command-line arguments exit with status `2`.
+При лексической или синтаксической ошибке программа сообщает строку и столбец и завершается с кодом `1`. Ошибка чтения файла также возвращает код `1`. Неверные аргументы командной строки возвращают код `2`.
 
 ```text
 Lexical error: Unexpected character '@' at 2:17
 ```
 
-Syntax diagnostics describe the expected structure and report the error position. Missing-token errors also identify the unexpected token or end of input. The parser stops at the first error. Name resolution, type checking, duplicate declarations, and return-type validation belong to semantic analysis.
+Сообщения о синтаксических ошибках описывают ожидаемую конструкцию и указывают позицию ошибки. Если отсутствует нужный токен, сообщение также называет неожиданный токен или конец ввода. Парсер останавливается на первой ошибке. Разрешение имён, проверка типов, повторных объявлений и возвращаемого типа относятся к семантическому анализу.
 
-## Code walkthrough
+## Разбор кода
 
-### Entry point and data flow
+### Точка входа и передача данных
 
-[`Main.kt`](src/main/kotlin/team/niiby/compiler/Main.kt) reads a file or standard input and calls `Lexer(source).tokenize()`. In token mode, `printTokens()` prints each token's type, starting position, and lexeme. In parse mode, it passes the tokens to `Parser`, then passes the resulting `Program` to `AstPrinter`:
+[`Main.kt`](src/main/kotlin/team/niiby/compiler/Main.kt) читает файл или стандартный ввод и вызывает `Lexer(source).tokenize()`. В режиме токенов функция `printTokens()` выводит тип, начальную позицию и лексему каждого токена. В режиме разбора токены передаются в `Parser`, после чего полученный узел `Program` передаётся в `AstPrinter`:
 
 ```kotlin
 val tokens = Lexer(source).tokenize()
@@ -107,71 +107,71 @@ val outline = AstPrinter().print(program)
 print(outline)
 ```
 
-The lexer recognizes words, numbers, and punctuation. The parser checks how those tokens form declarations, statements, and expressions. `AstPrinter` turns the tree into text for inspection. None of these steps executes the O program.
+Лексер распознаёт слова, числа и знаки. Парсер проверяет, как токены образуют объявления, инструкции и выражения. `AstPrinter` выводит дерево в текстовом виде. На этих этапах программа на языке O ещё не выполняется.
 
-### Lexer: source text to tokens
+### Лексер: из исходного текста в токены
 
-[`Lexer.kt`](src/main/kotlin/team/niiby/compiler/lexer/Lexer.kt) stores the source string and a cursor: `index`, `line`, and `column`. `tokenize()` repeats these steps:
+[`Lexer.kt`](src/main/kotlin/team/niiby/compiler/lexer/Lexer.kt) хранит исходную строку и текущую позицию: `index`, `line` и `column`. Функция `tokenize()` повторяет следующие действия:
 
-1. `skipTrivia()` skips whitespace, `//` comments, and `/* ... */` comments.
-2. It records the next token's starting position.
-3. `scanIdentifier()`, `scanNumber()`, or `scanSymbol()` reads the token.
-4. `token()` stores its type, original text, and source span.
-5. At the end of the source, it appends one `EOF` token with an empty lexeme and a zero-length span.
+1. `skipTrivia()` пропускает пробельные символы, комментарии `//` и `/* ... */`.
+2. Запоминает начальную позицию следующего токена.
+3. Читает токен через `scanIdentifier()`, `scanNumber()` или `scanSymbol()`.
+4. `token()` сохраняет тип токена, исходный текст и диапазон позиций.
+5. В конце исходного текста добавляет один токен `EOF` с пустой лексемой и диапазоном нулевой длины.
 
-`scanIdentifier()` accepts a letter or underscore first, followed by letters, digits, or underscores. It checks the complete word against `KEYWORDS`. Keywords are case-sensitive; `true` and `false` become `BOOLEAN_LITERAL` tokens.
+`scanIdentifier()` принимает букву или подчёркивание в начале имени, затем буквы, цифры и подчёркивания. Прочитанное слово проверяется по таблице `KEYWORDS`. Ключевые слова чувствительны к регистру; `true` и `false` превращаются в токены `BOOLEAN_LITERAL`.
 
-`scanNumber()` reads an integer, an optional fractional part, and an optional exponent. A dot belongs to a real number only when the next character is a digit. This keeps `2.Plus(3)` as an integer followed by member access. Exponents require at least one digit; `12e+` raises `LexerException` at the `e`.
+`scanNumber()` читает целую часть, необязательную дробную часть и необязательную экспоненту. Точка входит в вещественный литерал только тогда, когда за ней идёт цифра. Поэтому `2.Plus(3)` разбирается как целое число с последующим обращением к члену. В экспоненте нужна хотя бы одна цифра: для `12e+` лексер выбросит `LexerException` на позиции `e`.
 
-`scanSymbol()` checks two-character operators such as `:=`, `=>`, and `<=` before single-character symbols. This rule is called maximal munch: it selects the longer matching token. An unknown character raises `LexerException`; an unclosed block comment reports the comment's starting position.
+`scanSymbol()` сначала проверяет двухсимвольные операторы, например `:=`, `=>` и `<=`, затем одиночные символы. Это правило максимального захвата (maximal munch): выбирается самый длинный подходящий токен. Неизвестный символ вызывает `LexerException`; незакрытый блочный комментарий сообщает позицию своего начала.
 
-`advance()` updates all cursor fields. It treats LF, CR, and CRLF as line breaks, with CRLF counting as one newline. The token and position types are defined in [`Token.kt`](src/main/kotlin/team/niiby/compiler/lexer/Token.kt), and the vocabulary is listed in [`TokenType.kt`](src/main/kotlin/team/niiby/compiler/lexer/TokenType.kt).
+`advance()` обновляет все поля текущей позиции. LF, CR и CRLF считаются переносами строки, причём CRLF увеличивает номер строки один раз. Типы токенов и позиций описаны в [`Token.kt`](src/main/kotlin/team/niiby/compiler/lexer/Token.kt), а полный набор типов токенов приведён в [`TokenType.kt`](src/main/kotlin/team/niiby/compiler/lexer/TokenType.kt).
 
-### Parser: tokens to an AST
+### Парсер: из токенов в AST
 
-[`Parser.kt`](src/main/kotlin/team/niiby/compiler/parser/Parser.kt) stores the token list and its own `index`. Its constructor requires exactly one `EOF`, at the end of the list. Invalid token lists supplied through the Kotlin API raise `IllegalArgumentException`.
+[`Parser.kt`](src/main/kotlin/team/niiby/compiler/parser/Parser.kt) хранит список токенов и собственный `index`. Конструктор требует ровно один `EOF` в конце списка. Если через Kotlin API передан некорректный список, возникает `IllegalArgumentException`.
 
-`parse()` parses one or more classes and returns `Program`. It stops with the cursor at the final `EOF`. Empty input fails, and any token after the last class must begin another complete class declaration.
+`parse()` разбирает один или несколько классов и возвращает `Program`. После разбора текущим токеном остаётся конечный `EOF`. Пустая программа вызывает ошибку. Если после класса есть другие токены, они должны образовать ещё одно полное объявление класса.
 
-The parser chooses a rule from the current token. A class member beginning with `var` calls `parseVariable()`, `method` calls `parseMethod()`, and `this` calls `parseConstructor()`. Each function reads its syntax and returns an AST node. The implementation uses handwritten functions, with no parser generator or separate parse-tree stage.
+Правило выбирается по текущему токену. Члены класса разбираются функциями `parseVariable()` для `var`, `parseMethod()` для `method` и `parseConstructor()` для `this`. Каждая функция читает свою конструкцию и возвращает узел AST. Парсер написан вручную и сразу строит AST, без генератора парсера и промежуточного дерева разбора.
 
-| Functions | What they read and build |
+| Функции | Что читают и строят |
 | --- | --- |
-| `parseClass()` | Class type, optional parent, members, and the closing `end` |
-| `parseType()`, `parseTypeArguments()` | A type name and recursively nested generic arguments |
-| `parseVariable()` | `var name : expression`, used for both fields and local variables |
-| `parseParameters()` | An optional parameter list; each parameter has a name and type |
-| `parseMethod()` | Method name, parameters, optional return type, and a block or expression body |
-| `parseConstructor()` | `this`, parameters, and an `is ... end` block |
-| `parseBlock()`, `parseStatement()` | Statements until `end`, or until `else` when parsing an if branch |
-| `parseWhile()`, `parseFor()`, `parseIf()` | A condition or iterable, nested blocks, and their closing keywords |
-| `parseReturn()`, `canStartExpression()` | `return` and its optional value |
-| `parseExpressionStatement()` | An expression, optionally followed by `:=` and an assigned value |
-| `parseExpression()` and the precedence functions | Nested expression nodes in operator-precedence order |
+| `parseClass()` | Тип класса, необязательного родителя, члены и закрывающий `end` |
+| `parseType()`, `parseTypeArguments()` | Имя типа и рекурсивно вложенные аргументы обобщённых типов |
+| `parseVariable()` | `var name : expression` для поля или локальной переменной |
+| `parseParameters()` | Необязательный список параметров; у каждого есть имя и тип |
+| `parseMethod()` | Имя метода, параметры, необязательный возвращаемый тип и тело в виде блока или выражения |
+| `parseConstructor()` | `this`, параметры и блок `is ... end` |
+| `parseBlock()`, `parseStatement()` | Инструкции до `end` или до `else` при разборе ветви условия |
+| `parseWhile()`, `parseFor()`, `parseIf()` | Условие или перебираемое выражение, вложенные блоки и закрывающие ключевые слова |
+| `parseReturn()`, `canStartExpression()` | `return` и необязательное возвращаемое значение |
+| `parseExpressionStatement()` | Выражение, за которым могут следовать `:=` и присваиваемое значение |
+| `parseExpression()` и функции приоритетов | Вложенные узлы выражений с учётом приоритета операторов |
 
-The cursor helpers keep token handling in one place. `peek()` and `previous()` inspect tokens; `advance()` consumes one; `check()` compares its type without consuming it. `match()` consumes an optional token, while `consume()` requires a token or calls `fail()`. `fail()` throws `ParserException` with the unexpected token's position.
+Вспомогательные функции управляют чтением токенов. `peek()` и `previous()` смотрят текущий и предыдущий токены; `advance()` читает токен и сдвигает позицию; `check()` проверяет тип без сдвига. `match()` читает необязательный токен, если он подошёл. `consume()` требует токен заданного типа или вызывает `fail()`. Функция `fail()` выбрасывает `ParserException` с позицией неожиданного токена.
 
-Assignment is a statement. Its target must be a `NameExpression` without generic arguments or a `MemberExpression`. Targets such as `1`, `Call()`, `(value)`, and `this` are rejected. Whether a name or member refers to a writable value is a later semantic check.
+Присваивание относится к инструкциям. Слева должен быть `NameExpression` без аргументов типов или `MemberExpression`. Цели вроде `1`, `Call()`, `(value)` и `this` отклоняются. Семантический анализ позже определит, можно ли изменять значение, на которое ссылается имя или член.
 
-### Expression precedence
+### Приоритет выражений
 
-`parseExpression()` calls `parseEquality()`. Each level delegates its operands to the next, tighter level:
+`parseExpression()` вызывает `parseEquality()`. Каждый уровень передаёт разбор своих операндов следующему уровню с более высоким приоритетом:
 
-| Priority, lowest first | Function | Syntax |
+| Приоритет, начиная с низшего | Функция | Синтаксис |
 | --- | --- | --- |
 | 1 | `parseEquality()` | `==` |
 | 2 | `parseComparison()` | `<`, `>`, `<=`, `>=` |
 | 3 | `parseAddition()` | `+`, `-` |
 | 4 | `parseMultiplication()` | `*`, `/` |
-| 5 | `parseUnary()` | Prefix `+`, `-` |
-| 6 | `parsePostfix()` | Member access and calls |
-| 7 | `parsePrimary()` | Literals, names with optional type arguments, `this`, and grouped expressions |
+| 5 | `parseUnary()` | Унарные `+`, `-` |
+| 6 | `parsePostfix()` | Доступ к членам и вызовы |
+| 7 | `parsePrimary()` | Литералы, имена с необязательными аргументами типов, `this` и выражения в скобках |
 
-The four binary levels share `parseBinary()`. It reads a left operand, then repeatedly combines the accumulated expression with an operator and a right operand. This gives left associativity: `a - b - c` becomes `(a - b) - c`.
+Бинарные операции четырёх уровней разбираются общей функцией `parseBinary()`. Она читает левый операнд, затем в цикле объединяет накопленное выражение с очередным оператором и правым операндом. Так получается левая ассоциативность: `a - b - c` превращается в `(a - b) - c`.
 
-`parseUnary()` recursively reads prefix operators. `parsePostfix()` repeatedly wraps an expression in member-access or call nodes, so chains such as `this.factory().Build(2.Plus(3)).value` retain their full structure. Parentheses create `GroupedExpression`, preserving both the grouping and its source span.
+`parseUnary()` рекурсивно читает унарные операторы. `parsePostfix()` последовательно оборачивает выражение в узлы доступа к члену или вызова. Поэтому цепочка `this.factory().Build(2.Plus(3)).value` сохраняет всю вложенную структуру. Скобки создают узел `GroupedExpression`, который хранит группировку и её диапазон в исходном тексте.
 
-For `1 + 2 * 3`, multiplication becomes the right child of addition:
+Для `1 + 2 * 3` умножение становится правым дочерним узлом сложения:
 
 ```mermaid
 flowchart TD
@@ -181,29 +181,29 @@ flowchart TD
     star --> three["LiteralExpression: 3"]
 ```
 
-### AST nodes and source positions
+### Узлы AST и позиции в исходном тексте
 
-[`Ast.kt`](src/main/kotlin/team/niiby/compiler/parser/Ast.kt) defines Kotlin data classes and sealed interfaces. `AstNode` gives every node a `SourceSpan`. The interfaces describe where each node can appear:
+[`Ast.kt`](src/main/kotlin/team/niiby/compiler/parser/Ast.kt) определяет классы данных Kotlin и интерфейсы `sealed`. Через `AstNode` каждый узел получает `SourceSpan`. Интерфейсы задают, где может находиться узел:
 
-| Role | Node types |
+| Роль | Типы узлов |
 | --- | --- |
-| Program and type structure | `Program`, `ClassDeclaration`, `TypeReference`, `Parameter` |
+| Структура программы и типов | `Program`, `ClassDeclaration`, `TypeReference`, `Parameter` |
 | `MemberDeclaration` | `VariableDeclaration`, `MethodDeclaration`, `ConstructorDeclaration` |
 | `Statement` | `VariableDeclaration`, `AssignmentStatement`, `WhileStatement`, `ForStatement`, `IfStatement`, `ReturnStatement`, `ExpressionStatement` |
 | `MethodBody` | `Block`, `ExpressionBody` |
 | `Expression` | `NameExpression`, `ThisExpression`, `LiteralExpression`, `MemberExpression`, `CallExpression`, `UnaryExpression`, `BinaryExpression`, `GroupedExpression` |
 
-`VariableDeclaration` implements both `MemberDeclaration` and `Statement`, so fields and local variables share a node type. `Block` implements `MethodBody` and contains statements. A method holds either a `Block` or an `ExpressionBody`; a constructor always holds a `Block`. `TypeReference.arguments` stores nested type references, while `NameExpression.typeArguments` stores generic arguments on a name used in an expression.
+`VariableDeclaration` реализует и `MemberDeclaration`, и `Statement`, поэтому поля и локальные переменные используют один тип узла. `Block` реализует `MethodBody` и содержит инструкции. Тело метода хранится как `Block` или `ExpressionBody`; тело конструктора всегда хранится как `Block`. В `TypeReference.arguments` находятся вложенные ссылки на типы, а в `NameExpression.typeArguments` хранятся аргументы типов у имени в выражении.
 
-Literals retain their token kind and original lexeme. Parsing does not convert a large integer to a machine integer or evaluate an expression. A call such as `Counter(0)` remains `CallExpression(NameExpression("Counter"), ...)`; deciding whether it calls a constructor requires name resolution.
+Литералы сохраняют тип токена и исходную лексему. Парсер не преобразует большое целое число в машинный целочисленный тип и не вычисляет выражения. Вызов `Counter(0)` остаётся узлом `CallExpression(NameExpression("Counter"), ...)`. Чтобы определить, вызывается ли конструктор, нужно разрешить имя `Counter`.
 
-`SourcePosition` contains a zero-based offset into the Kotlin source string and one-based line and column numbers. `SourceSpan` is half-open: it includes `start` and excludes `end`. Token spans cover the original lexeme; AST spans cover the source represented by each node. Classes, constructors, block methods, and control-flow statements include their closing `end` in their spans. A `Block` span covers only its statements; an empty block has a zero-length span at its terminator.
+`SourcePosition` хранит смещение в исходной строке Kotlin, начиная с нуля, и номера строки и столбца, начиная с единицы. `SourceSpan` задаёт полуоткрытый диапазон: позиция `start` входит в него, а `end` исключается. Диапазон токена охватывает исходную лексему, а диапазон узла AST охватывает соответствующую конструкцию. Классы, конструкторы, методы с блоком и инструкции управления потоком включают закрывающий `end` в свой диапазон. Диапазон `Block` охватывает только его инструкции; у пустого блока он имеет нулевую длину на позиции завершающего токена.
 
-[`AstPrinter.kt`](src/main/kotlin/team/niiby/compiler/parser/AstPrinter.kt) recursively visits the tree through `appendNode()`. It selects a label and children for each node, adds two spaces per nesting level, and prints the starting line and column. The AST retains offsets and end positions even though the outline displays only starting positions.
+[`AstPrinter.kt`](src/main/kotlin/team/niiby/compiler/parser/AstPrinter.kt) рекурсивно обходит дерево через `appendNode()`. Для каждого узла выбирает подпись и дочерние узлы, добавляет по два пробела на уровень вложенности и выводит начальную строку и столбец. Сам AST также хранит смещения и конечные позиции, которые не попадают в текстовый вывод.
 
-### Worked example
+### Разбор примера
 
-This source is also used by the AST-output regression test:
+Этот исходный код также используется в тесте вывода AST:
 
 ```text
 class Example is
@@ -211,14 +211,14 @@ class Example is
 end
 ```
 
-The lexer emits:
+Лексер выдаёт последовательность токенов:
 
 ```text
 CLASS IDENTIFIER IS METHOD IDENTIFIER FAT_ARROW
 INTEGER_LITERAL PLUS INTEGER_LITERAL STAR INTEGER_LITERAL END EOF
 ```
 
-The parser builds a class containing an expression-bodied method. `AstPrinter` prints:
+Парсер строит класс с методом, тело которого задано выражением. `AstPrinter` выводит:
 
 ```text
 Program @ 1:1
@@ -233,11 +233,11 @@ Program @ 1:1
             Literal 3 @ 2:29
 ```
 
-## UML class diagrams
+## UML-диаграммы классов
 
-### Compiler components
+### Компоненты компилятора
 
-The class diagram shows the token API and the classes that build and print the AST. Solid arrows show stored references; dotted arrows show dependencies.
+Диаграмма показывает структуру токенов и классы, которые строят и выводят AST. Сплошные стрелки обозначают хранимые ссылки, пунктирные показывают зависимости.
 
 ```mermaid
 classDiagram
@@ -276,19 +276,19 @@ classDiagram
     class AstPrinter {
         +print(Program) String
     }
-    Lexer ..> Token : creates
-    Parser --> Token : reads tokens
-    Token --> TokenType : type
-    Token --> SourceSpan : span
-    SourceSpan --> SourcePosition : start and end
-    Parser ..> Program : builds
-    Program --> SourceSpan : span
-    AstPrinter ..> Program : traverses
+    Lexer ..> Token : создаёт
+    Parser --> Token : читает токены
+    Token --> TokenType : тип
+    Token --> SourceSpan : диапазон
+    SourceSpan --> SourcePosition : начало и конец
+    Parser ..> Program : строит
+    Program --> SourceSpan : диапазон
+    AstPrinter ..> Program : обходит
 ```
 
-### AST structure
+### Структура AST
 
-This diagram focuses on declarations, method bodies, and statement ownership. The table above lists all expression and statement implementations. Every type shown here implements `AstNode`, directly or through an interface.
+Здесь показаны объявления, тела методов и связи с инструкциями. Все реализации выражений и инструкций перечислены в таблице выше. Каждый тип на диаграмме реализует `AstNode` напрямую или через интерфейс.
 
 ```mermaid
 classDiagram
@@ -305,72 +305,72 @@ classDiagram
     class Expression {
         <<interface>>
     }
-    Program "1" *-- "1..*" ClassDeclaration : classes
-    ClassDeclaration "1" *-- "0..*" MemberDeclaration : members
-    ClassDeclaration --> TypeReference : type and optional parent
+    Program "1" *-- "1..*" ClassDeclaration : классы
+    ClassDeclaration "1" *-- "0..*" MemberDeclaration : члены
+    ClassDeclaration --> TypeReference : тип и необязательный родитель
     MemberDeclaration <|.. VariableDeclaration
     MemberDeclaration <|.. MethodDeclaration
     MemberDeclaration <|.. ConstructorDeclaration
     Statement <|.. VariableDeclaration
-    VariableDeclaration --> Expression : initializer
-    MethodDeclaration --> Parameter : parameters
-    MethodDeclaration --> TypeReference : optional returnType
-    MethodDeclaration "1" *-- "1" MethodBody : body
-    ConstructorDeclaration --> Parameter : parameters
-    ConstructorDeclaration "1" *-- "1" Block : body
+    VariableDeclaration --> Expression : инициализатор
+    MethodDeclaration --> Parameter : параметры
+    MethodDeclaration --> TypeReference : необязательный возвращаемый тип
+    MethodDeclaration "1" *-- "1" MethodBody : тело
+    ConstructorDeclaration --> Parameter : параметры
+    ConstructorDeclaration "1" *-- "1" Block : тело
     MethodBody <|.. Block
     MethodBody <|.. ExpressionBody
-    Block "1" *-- "0..*" Statement : statements
-    ExpressionBody "1" *-- "1" Expression : expression
-    Parameter --> TypeReference : type
+    Block "1" *-- "0..*" Statement : инструкции
+    ExpressionBody "1" *-- "1" Expression : выражение
+    Parameter --> TypeReference : тип
 ```
 
-`<|..` means that a data class implements an interface. `*--` marks containment in the AST, and multiplicities show how many children the parser places in a node.
+Стрелка `<|..` означает реализацию интерфейса классом данных. Связь `*--` обозначает вложенность узлов AST, а числа рядом со связями показывают количество дочерних узлов, которое создаёт парсер.
 
-## Parse-mode sequence
+## Диаграмма последовательности для режима разбора
 
-This sequence follows `Main.kt` for `--parse`. Token mode returns after printing the token list and never invokes the parser or AST printer. File-reading errors are handled before lexing.
+Последовательность соответствует запуску `Main.kt` с аргументом `--parse`. В режиме токенов программа завершается после их вывода, без вызовов парсера и принтера AST. Ошибки чтения файла обрабатываются до запуска лексера.
 
 ```mermaid
 sequenceDiagram
-    actor User
+    actor User as Пользователь
     participant CLI as MainKt
-    participant Input as File or stdin
+    participant Input as Файл или stdin
     participant L as Lexer
     participant P as Parser
     participant A as AstPrinter
     User->>CLI: --parse [source-file]
     CLI->>Input: readText()
-    Input-->>CLI: source String
+    Input-->>CLI: Исходный текст String
     CLI->>L: Lexer(source)
     CLI->>L: tokenize()
-    alt Lexical error
-        L-->>CLI: throw LexerException
-        CLI-->>User: stderr diagnostic (exit 1)
-    else Tokens ready
-        L-->>CLI: List of Token, ending in EOF
+    alt Лексическая ошибка
+        L-->>CLI: Исключение LexerException
+        CLI-->>User: Сообщение в stderr (код выхода 1)
+    else Токены готовы
+        L-->>CLI: Список Token с EOF в конце
         CLI->>P: Parser(tokens)
-        Note over P: Constructor validates one final EOF
+        Note over P: Конструктор проверяет единственный конечный EOF
         CLI->>P: parse()
-        Note over P: parseClass() calls nested rules and builds nodes
-        alt Syntax error
-            P-->>CLI: throw ParserException
-            CLI-->>User: stderr diagnostic (exit 1)
-        else Valid program
+        Note over P: parseClass() вызывает вложенные правила и строит узлы
+        alt Синтаксическая ошибка
+            P-->>CLI: Исключение ParserException
+            CLI-->>User: Сообщение в stderr (код выхода 1)
+        else Корректная программа
             P-->>CLI: Program
             CLI->>A: print(program)
             A->>A: appendNode(program, 0)
-            A-->>CLI: AST outline String
-            CLI-->>User: stdout AST outline
+            A-->>CLI: Текстовое дерево AST, String
+            CLI-->>User: Дерево AST в stdout
         end
     end
 ```
 
-For example, `var value : end` inside a class tokenizes successfully, but `parseVariable()` expects an expression after `:`. The parser fails at `end`, and the CLI prints a syntax diagnostic instead of an AST.
+Например, `var value : end` внутри класса успешно разбивается на токены, но `parseVariable()` ожидает выражение после `:`. Парсер обнаруживает ошибку на `end`, и программа выводит сообщение о синтаксической ошибке вместо AST.
 
-## Implemented grammar
+## Реализованная грамматика
 
-This EBNF describes the implemented rules. Brackets mean an optional part, braces mean repetition, and quoted text is a source token. `identifier`, `literal`, and `EOF` come from the lexer; literals are integer, real, or boolean tokens.
+Ниже правила реализованного синтаксиса в форме EBNF. Квадратные скобки обозначают необязательную часть, фигурные скобки обозначают повторение, а текст в кавычках соответствует токену исходного кода. `identifier`, `literal` и `EOF` поступают от лексера; литералы бывают целочисленными, вещественными и логическими.
 
 ```ebnf
 program       = classDecl, { classDecl }, EOF ;
@@ -404,43 +404,43 @@ primary       = literal | type | "this" | "(", expression, ")" ;
 arguments     = "(", [ expression, { ",", expression } ], ")" ;
 ```
 
-`assignable` means a name without generic arguments or a member-access expression, as checked by `parseExpressionStatement()`. The `type` form in an expression creates a `NameExpression` with optional type arguments. Square brackets hold generic arguments; array indexing is outside this grammar.
+`assignable` обозначает имя без аргументов типов или выражение доступа к члену. Это ограничение проверяет `parseExpressionStatement()`. Форма `type` в выражении создаёт `NameExpression` с необязательными аргументами типов. Квадратные скобки в исходном коде используются для аргументов типов; индексация массивов в эту грамматику не входит.
 
-The lexer discards whitespace and comments, including line breaks. Statement boundaries therefore come from tokens. A value after `return` is consumed whenever the next token can start an expression, even on the next line. A bare return ends before `end`, `else`, or another token that cannot start an expression.
+Лексер пропускает пробельные символы и комментарии, включая переносы строк. Поэтому границы инструкций определяются по токенам. Значение после `return` читается всякий раз, когда следующий токен может начать выражение, даже на следующей строке. Возврат без значения заканчивается перед `end`, `else` или другим токеном, который не может начать выражение.
 
-Typed parameters, generics, full method bodies, member assignment, and the `for` form are project grammar choices inferred from the existing lexer and examples. They need comparison with the course's O specification if it becomes available. Name resolution, type checking, code generation, and error recovery remain later work.
+Синтаксис типизированных параметров, обобщённых типов, методов с блоками, присваивания членам и цикла `for` выбран на основе существующего лексера и примеров проекта. Когда станет доступна спецификация языка O для курса, эти правила нужно будет сверить с ней. Разрешение имён, проверка типов, генерация кода и продолжение разбора после ошибки остаются для следующих этапов.
 
-## Verification
+## Проверка
 
-Run the Maven suite with `make test` or `mvn test`. The current suite contains 54 tests:
+Запустить тесты Maven можно командами `make test` или `mvn test`. Сейчас в наборе 54 теста:
 
-| Test file | Count | Main checks |
+| Файл тестов | Количество | Что проверяется |
 | --- | --- | --- |
-| [`LexerTest.kt`](src/test/kotlin/team/niiby/compiler/lexer/LexerTest.kt) | 19 | Keywords, literals, symbols, comments, positions, and lexical errors |
-| [`ParserTest.kt`](src/test/kotlin/team/niiby/compiler/parser/ParserTest.kt) | 34 | AST structure, declarations, nested control flow, precedence, call chains, spans, EOF, and syntax errors |
-| [`AstPrinterTest.kt`](src/test/kotlin/team/niiby/compiler/parser/AstPrinterTest.kt) | 1 | Exact outline and positions for the worked example |
+| [`LexerTest.kt`](src/test/kotlin/team/niiby/compiler/lexer/LexerTest.kt) | 19 | Ключевые слова, литералы, символы, комментарии, позиции и лексические ошибки |
+| [`ParserTest.kt`](src/test/kotlin/team/niiby/compiler/parser/ParserTest.kt) | 34 | Структура AST, объявления, вложенные циклы и условия, приоритеты, цепочки вызовов, диапазоны, EOF и синтаксические ошибки |
+| [`AstPrinterTest.kt`](src/test/kotlin/team/niiby/compiler/parser/AstPrinterTest.kt) | 1 | Точный вывод дерева и позиции узлов для разобранного примера |
 
-The example files are also parsed by regression tests. Tests inspect node types, children, and source slices; accepting input alone would not detect an incorrectly shaped AST.
+Тесты также разбирают файлы примеров. Они проверяют типы узлов, дочерние узлы и соответствующие участки исходного текста. Одной проверки успешного разбора недостаточно, чтобы обнаружить ошибку в структуре AST.
 
-## Repository structure
+## Структура репозитория
 
 ```text
 examples/
-  demo.o                   Original lexer example
-  syntax.o                 Syntax analyzer example
+  demo.o                   Исходный пример для лексера
+  syntax.o                 Пример для синтаксического анализатора
 src/main/kotlin/team/niiby/compiler/
-  Main.kt                  Token and AST command-line modes
-  lexer/                   Scanner, tokens, and source positions
+  Main.kt                  Режимы вывода токенов и AST
+  lexer/                   Лексер, токены и позиции в исходном тексте
   parser/
-    Ast.kt                 AST data classes
-    Parser.kt              Recursive-descent syntax analyzer
-    ParserException.kt     Syntax diagnostics
-    AstPrinter.kt          Readable AST outline
+    Ast.kt                 Классы данных AST
+    Parser.kt              Парсер на основе рекурсивного спуска
+    ParserException.kt     Синтаксические ошибки
+    AstPrinter.kt          Текстовое представление AST
 src/test/kotlin/team/niiby/compiler/
-  lexer/                   Lexer tests
-  parser/                  Parser and AST output tests
-Makefile                   Build, test, and run commands
-pom.xml                    Maven configuration
+  lexer/                   Тесты лексера
+  parser/                  Тесты парсера и вывода AST
+Makefile                   Команды сборки, проверки и запуска
+pom.xml                    Конфигурация Maven
 ```
 
-Lecture PDFs and the earlier lexer presentation remain local reference files and are ignored by Git.
+PDF лекций и презентация по лексеру хранятся локально как справочные материалы и игнорируются Git.
