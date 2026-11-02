@@ -59,7 +59,7 @@ data class ConstructorDeclaration(
 data class Block(
     val statements: List<Statement>,
     override val span: SourceSpan,
-) : MethodBody
+) : MethodBody, Statement
 
 data class ExpressionBody(
     val expression: Expression,
@@ -145,3 +145,5 @@ data class GroupedExpression(
     val expression: Expression,
     override val span: SourceSpan,
 ) : Expression
+
+

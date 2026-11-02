@@ -42,3 +42,10 @@ ast:
 
 clean:
 	$(MAVEN) -q clean
+
+.PHONY: analyze optimize
+analyze:
+	$(MAVEN) -q compile exec:java -Dexec.args="--analyze $(FILE)"
+
+optimize:
+	$(MAVEN) -q compile exec:java -Dexec.args="--optimize $(FILE)"

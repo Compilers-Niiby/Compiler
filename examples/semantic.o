@@ -1,0 +1,22 @@
+class Demo is
+    var value : 0
+
+    method add(amount : Integer) : Integer is
+        value := value.Plus(amount)
+        return value
+    end
+
+    method calculate : Integer is
+        var result : 2.Plus(3.Mult(4))
+        if 3.Less(5) then
+            result := result.Plus(1)
+        else
+            result := 0
+        end
+        while false loop
+            result := 99
+        end
+        return result
+        result := 100
+    end
+end

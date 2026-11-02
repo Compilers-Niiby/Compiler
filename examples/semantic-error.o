@@ -1,0 +1,6 @@
+class Broken is
+    method result : Integer is
+        var value : true
+        return value
+    end
+end

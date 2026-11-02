@@ -1,5 +1,8 @@
 package team.niiby.compiler
 
+import team.niiby.compiler.analyzer.Analyzer
+import team.niiby.compiler.analyzer.Optimizer
+import team.niiby.compiler.analyzer.SemanticException
 import java.io.IOException
 import java.nio.file.InvalidPathException
 import java.nio.file.Path
@@ -14,15 +17,15 @@ import team.niiby.compiler.parser.ParserException
 
 fun main(args: Array<String>) {
     if (args.contentEquals(arrayOf("--help"))) {
-        println("Usage: compiler [--tokens|--parse] [source-file]")
+        println("Usage: compiler [--tokens|--parse|--analyze|--optimize] [source-file]")
         println("Without a file, reads standard input. The default mode is --tokens.")
         return
     }
 
-    val parse = args.firstOrNull() == "--parse"
-    val files = if (args.firstOrNull() in listOf("--parse", "--tokens")) args.drop(1) else args.toList()
+    val mode = args.firstOrNull() ?: "--tokens"
+    val files = if (args.firstOrNull() in listOf("--parse", "--tokens", "--analyze", "--optimize")) args.drop(1) else args.toList()
     if (files.size > 1 || files.any { it.startsWith("--") }) {
-        System.err.println("Usage: compiler [--tokens|--parse] [source-file]")
+        System.err.println("Usage: compiler [--tokens|--parse|--analyze|--optimize] [source-file]")
         exitProcess(2)
     }
 
@@ -33,7 +36,14 @@ fun main(args: Array<String>) {
             Path.of(files.single()).readText()
         }
         val tokens = Lexer(source).tokenize()
-        if (parse) print(AstPrinter().print(Parser(tokens).parse())) else printTokens(tokens)
+        if (mode in listOf("--parse", "--analyze", "--optimize")) {
+            val program = Parser(tokens).parse()
+            if (mode != "--parse") Analyzer().analyze(program)
+            print(AstPrinter().print(if (mode == "--optimize") Optimizer().optimize(program) else program))
+        } else printTokens(tokens)
+    } catch (error: SemanticException) {
+        System.err.println("Semantic error: ${error.message}")
+        exitProcess(1)
     } catch (error: LexerException) {
         System.err.println("Lexical error: ${error.message}")
         exitProcess(1)
