@@ -1,6 +1,6 @@
 # Компилятор O команды Niiby
 
-Учебный проект по разработке компилятора на Kotlin. Лексер разбивает исходный код языка O на токены, а синтаксический анализатор строит абстрактное синтаксическое дерево (AST). Семантический анализатор проверяет программу, оптимизатор упрощает AST, а генератор переводит проверенную программу в Jasmin.
+Учебный проект по разработке компилятора на Kotlin. Лексер разбивает исходный код языка O на токены, а синтаксический анализатор строит абстрактное синтаксическое дерево (AST). Семантический анализатор проверяет программу, оптимизатор упрощает AST, а генератор записывает байткод JVM в файлы `.class`.
 
 - [Быстрый запуск](#быстрый-запуск)
 - [Разбор кода](#разбор-кода)
@@ -81,15 +81,27 @@ Program @ 1:1
 
 Вызов через Kotlin API: `Parser(Lexer(source).tokenize()).parse()`. Каждый узел AST хранит полный диапазон исходного текста, включая смещения и конечную позицию.
 
-### Генерация Jasmin
+### Генерация и запуск байткода JVM
 
 ```bash
 mvn -q compile exec:java -Dexec.args="--generate examples/demo.o"
-java -jar /path/to/jasmin.jar -d target/jasmin target/jasmin/Counter.j
-javap -c -classpath target/jasmin Counter
+javap -c -classpath target/generated-classes Counter
 ```
 
-`--generate` сначала проверяет программу и записывает отдельный `.j` для каждого класса. По умолчанию файлы попадают в `target/jasmin`. Свою папку можно указать после имени исходника. Для сборки `.class` подставьте путь к скачанному JAR в команду выше. Сборка проверена с Jasmin 3.0.3. [Jasmin 3.0.3 с зависимостями](https://repo.maven.apache.org/maven2/ca/mcgill/sable/jasmin/3.0.3/jasmin-3.0.3-jar-with-dependencies.jar) · [Руководство Jasmin](https://jasmin.sourceforge.net/guide.html)
+`--generate` проверяет программу и создаёт по одному `.class` на класс через Class-File API из JDK 25. По умолчанию файлы попадают в `target/generated-classes`. Свою папку можно указать после имени исходника. Если зависимости Maven уже скачаны, добавьте `-o` для сборки без сети.
+
+Чтобы вызвать `Counter.doubled()`, создайте небольшой Java-файл с методом `main` и запустите его. Он напечатает `10`.
+
+```bash
+cat > target/generated-classes/RunCounter.java <<'EOF'
+public class RunCounter {
+    public static void main(String[] args) {
+        System.out.println(new Counter().doubled());
+    }
+}
+EOF
+java -cp target/generated-classes target/generated-classes/RunCounter.java
+```
 
 Если у родительского класса объявлены конструкторы, для наследования нужен конструктор без параметров. Именно его вызывает сгенерированный конструктор дочернего класса.
 
@@ -435,7 +447,7 @@ arguments     = "(", [ expression, { ",", expression } ], ")" ;
 
 ## Проверка
 
-Запустить тесты можно командами `make test`, `mvn test` или `.\mvnw.cmd test` на Windows. Сейчас в наборе 73 теста:
+Запустить тесты можно командами `make test`, `mvn test` или `.\mvnw.cmd test` на Windows. Сейчас в наборе 74 теста:
 
 | Файл тестов | Количество | Что проверяется |
 | --- | --- | --- |
@@ -444,7 +456,7 @@ arguments     = "(", [ expression, { ",", expression } ], ")" ;
 | [`AstPrinterTest.kt`](src/test/kotlin/team/niiby/compiler/parser/AstPrinterTest.kt) | 1 | Точный вывод дерева и позиции узлов для разобранного примера |
 | [`AnalyzerTest.kt`](src/test/kotlin/team/niiby/compiler/analyzer/AnalyzerTest.kt) | 9 | Имена, типы, вызовы, наследование, коллекции и неизменность AST |
 | [`OptimizerTest.kt`](src/test/kotlin/team/niiby/compiler/analyzer/OptimizerTest.kt) | 5 | Свёртка констант, упрощение управления, недостижимый код и сохранение областей видимости |
-| [`JasminGeneratorTest.kt`](src/test/kotlin/team/niiby/compiler/generator/JasminGeneratorTest.kt) | 5 | Сигнатуры JVM, наследование, перегрузки и диагностика |
+| [`JvmGeneratorTest.kt`](src/test/kotlin/team/niiby/compiler/generator/JvmGeneratorTest.kt) | 6 | Загрузка и выполнение сгенерированных классов, наследование, перегрузки и диагностика |
 
 Тесты также разбирают файлы примеров. Они проверяют типы узлов, дочерние узлы и соответствующие участки исходного текста. Одной проверки успешного разбора недостаточно, чтобы обнаружить ошибку в структуре AST.
 
@@ -458,7 +470,7 @@ src/main/kotlin/team/niiby/compiler/
   Main.kt                  Режимы командной строки
   lexer/                   Лексер, токены и позиции в исходном тексте
   analyzer/                Семантический анализ и оптимизация AST
-  generator/               Генерация Jasmin
+  generator/               Генерация байткода JVM
   parser/
     Ast.kt                 Классы данных AST
     Parser.kt              Парсер на основе рекурсивного спуска

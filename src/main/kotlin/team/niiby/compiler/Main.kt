@@ -4,7 +4,7 @@ import team.niiby.compiler.analyzer.Analyzer
 import team.niiby.compiler.analyzer.Optimizer
 import team.niiby.compiler.analyzer.SemanticException
 import team.niiby.compiler.generator.GenerationException
-import team.niiby.compiler.generator.JasminGenerator
+import team.niiby.compiler.generator.JvmGenerator
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.InvalidPathException
@@ -24,12 +24,13 @@ import team.niiby.compiler.parser.ParserException
 private const val USAGE = "Usage: compiler [--tokens|--parse|--analyze|--optimize] [source-file]\n" +
     "       compiler --generate [source-file] [output-directory]"
 private val MODES = setOf("--tokens", "--parse", "--analyze", "--optimize", "--generate")
+private const val DEFAULT_CLASS_OUTPUT = "target/generated-classes"
 
 fun main(args: Array<String>) {
     if (args.contentEquals(arrayOf("--help"))) {
         println(USAGE)
         println("Without a file, reads standard input. The default mode is --tokens.")
-        println("--generate writes one Jasmin file per class to target/jasmin by default.")
+        println("--generate writes JVM class files to $DEFAULT_CLASS_OUTPUT by default.")
         return
     }
 
@@ -52,8 +53,8 @@ fun main(args: Array<String>) {
         if (mode != "--tokens") {
             val program = Parser(tokens).parse()
             if (mode == "--generate") {
-                val output = Path.of(files.getOrNull(1) ?: "target/jasmin")
-                writeJasmin(output, JasminGenerator().generate(program))
+                val output = Path.of(files.getOrNull(1) ?: DEFAULT_CLASS_OUTPUT)
+                writeClassFiles(output, JvmGenerator().generate(program))
             } else {
                 if (mode != "--parse") Analyzer().analyze(program)
                 print(AstPrinter().print(if (mode == "--optimize") Optimizer().optimize(program) else program))
@@ -81,11 +82,11 @@ fun main(args: Array<String>) {
     }
 }
 
-private fun writeJasmin(output: Path, generated: Map<String, String>) {
+private fun writeClassFiles(output: Path, generated: Map<String, ByteArray>) {
     Files.createDirectories(output)
-    val staging = Files.createTempDirectory(output, ".jasmin-")
+    val staging = Files.createTempDirectory(output, ".classes-")
     try {
-        for ((name, jasmin) in generated) Files.writeString(staging.resolve(name), jasmin, CREATE_NEW, WRITE)
+        for ((name, bytes) in generated) Files.write(staging.resolve(name), bytes, CREATE_NEW, WRITE)
         for (name in generated.keys) Files.move(staging.resolve(name), output.resolve(name), REPLACE_EXISTING)
     } finally {
         for (name in generated.keys) Files.deleteIfExists(staging.resolve(name))

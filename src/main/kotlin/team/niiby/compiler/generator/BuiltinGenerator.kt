@@ -1,12 +1,27 @@
 package team.niiby.compiler.generator
 
+import java.lang.classfile.Opcode
+import java.lang.classfile.TypeKind
+import java.lang.constant.ClassDesc
+import java.lang.constant.ConstantDescs.CD_Object
+import java.lang.constant.ConstantDescs.CD_boolean
+import java.lang.constant.ConstantDescs.CD_int
+import java.lang.constant.ConstantDescs.CD_void
+import java.lang.constant.ConstantDescs.MTD_void
+import java.lang.constant.MethodTypeDesc
 import team.niiby.compiler.lexer.TokenType
 import team.niiby.compiler.parser.Expression
 import team.niiby.compiler.parser.GroupedExpression
 import team.niiby.compiler.parser.LiteralExpression
 import team.niiby.compiler.parser.UnaryExpression
 
-private const val LIST_CLASS = "java/util/ArrayList"
+private val LIST = ClassDesc.of("java.util.List")
+private val COLLECTION = ClassDesc.of("java.util.Collection")
+private val COLLECTIONS = ClassDesc.of("java.util.Collections")
+
+private enum class NumericOperation {
+    ADD, SUBTRACT, MULTIPLY, DIVIDE, REMAINDER, LESS, LESS_EQUAL, GREATER, GREATER_EQUAL, EQUAL,
+}
 
 internal class BuiltinGenerator(private val method: MethodGenerator) {
     private val code = method.code
@@ -50,70 +65,74 @@ internal class BuiltinGenerator(private val method: MethodGenerator) {
 
     fun binary(operator: TokenType, left: Expression, right: Expression) = arithmetic(
         when (operator) {
-            TokenType.PLUS -> "add"
-            TokenType.MINUS -> "sub"
-            TokenType.STAR -> "mul"
-            TokenType.SLASH -> "div"
-            TokenType.LESS -> "lt"
-            TokenType.LESS_EQUAL -> "le"
-            TokenType.GREATER -> "gt"
-            TokenType.GREATER_EQUAL -> "ge"
-            TokenType.EQUAL_EQUAL -> "eq"
+            TokenType.PLUS -> NumericOperation.ADD
+            TokenType.MINUS -> NumericOperation.SUBTRACT
+            TokenType.STAR -> NumericOperation.MULTIPLY
+            TokenType.SLASH -> NumericOperation.DIVIDE
+            TokenType.LESS -> NumericOperation.LESS
+            TokenType.LESS_EQUAL -> NumericOperation.LESS_EQUAL
+            TokenType.GREATER -> NumericOperation.GREATER
+            TokenType.GREATER_EQUAL -> NumericOperation.GREATER_EQUAL
+            TokenType.EQUAL_EQUAL -> NumericOperation.EQUAL
             else -> error("Unsupported operator $operator")
         },
         left, right,
     )
 
-    private fun arithmetic(operation: String, left: Expression, right: Expression) {
+    private fun arithmetic(operation: NumericOperation, left: Expression, right: Expression) {
         val real = method.typeOf(left) == "Real" || method.typeOf(right) == "Real"
         for (operand in listOf(left, right)) {
             method.expression(operand)
-            if (real && method.typeOf(operand) == "Integer") code.emit("i2d", pops = 1, pushes = 2)
+            if (real && method.typeOf(operand) == "Integer") code.i2d()
         }
-        if (operation in setOf("lt", "le", "gt", "ge", "eq")) {
-            if (real) {
-                // NaN must compare false for both the less-than and greater-than families.
-                val compare = if (operation == "lt" || operation == "le") "dcmpg" else "dcmpl"
-                code.emit(compare, pops = 4, pushes = 1)
-                comparison("if$operation", 1)
-            } else comparison("if_icmp$operation", 2)
-        } else {
-            if (real) code.emit("d$operation", pops = 4, pushes = 2)
-            else code.emit("i$operation", pops = 2, pushes = 1)
+        when (operation) {
+            NumericOperation.ADD -> if (real) code.dadd() else code.iadd()
+            NumericOperation.SUBTRACT -> if (real) code.dsub() else code.isub()
+            NumericOperation.MULTIPLY -> if (real) code.dmul() else code.imul()
+            NumericOperation.DIVIDE -> if (real) code.ddiv() else code.idiv()
+            NumericOperation.REMAINDER -> if (real) code.drem() else code.irem()
+            NumericOperation.LESS -> compare(real, Opcode.IF_ICMPLT, Opcode.IFLT)
+            NumericOperation.LESS_EQUAL -> compare(real, Opcode.IF_ICMPLE, Opcode.IFLE)
+            NumericOperation.GREATER -> compare(real, Opcode.IF_ICMPGT, Opcode.IFGT)
+            NumericOperation.GREATER_EQUAL -> compare(real, Opcode.IF_ICMPGE, Opcode.IFGE)
+            NumericOperation.EQUAL -> compare(real, Opcode.IF_ICMPEQ, Opcode.IFEQ)
         }
     }
 
-    private fun comparison(branch: String, pops: Int) {
-        val yes = code.label()
-        val end = code.label()
-        code.branch(branch, yes, pops)
+    private fun compare(real: Boolean, integerBranch: Opcode, realBranch: Opcode) {
+        if (real) {
+            // Select the comparison that leaves NaN outside this branch.
+            if (realBranch == Opcode.IFLT || realBranch == Opcode.IFLE) code.dcmpg() else code.dcmpl()
+            comparison(realBranch)
+        } else comparison(integerBranch)
+    }
+
+    private fun comparison(branch: Opcode) {
+        val yes = code.newLabel()
+        val end = code.newLabel()
+        code.branch(branch, yes)
         integer(0)
-        code.jump(end)
-        code.place(yes)
+        code.goto_(end)
+        code.labelBinding(yes)
         integer(1)
-        code.place(end)
+        code.labelBinding(end)
     }
 
     fun construct(type: String, arguments: List<Expression>) {
         when {
             type.startsWith("Array[") -> {
-                val element = elementType(type)
+                val element = typeSymbol(elementType(type))
                 method.expression(arguments.single())
-                val instruction = when (element) {
-                    "Integer" -> "newarray int"
-                    "Boolean" -> "newarray boolean"
-                    "Real" -> "newarray double"
-                    else -> "anewarray ${referenceName(element)}"
-                }
-                code.emit(instruction, pops = 1, pushes = 1)
+                if (element.isPrimitive) code.newarray(TypeKind.from(element))
+                else code.anewarray(element)
             }
             type.startsWith("List[") -> list(arguments)
             else -> {
                 val value = arguments.single()
                 method.expression(value)
                 when {
-                    type == "Real" && method.typeOf(value) == "Integer" -> code.emit("i2d", pops = 1, pushes = 2)
-                    type == "Integer" && method.typeOf(value) == "Real" -> code.emit("d2i", pops = 2, pushes = 1)
+                    type == "Real" && method.typeOf(value) == "Integer" -> code.i2d()
+                    type == "Integer" && method.typeOf(value) == "Real" -> code.d2i()
                 }
             }
         }
@@ -123,7 +142,7 @@ internal class BuiltinGenerator(private val method: MethodGenerator) {
         when (arguments.size) {
             0 -> {
                 newList()
-                code.emit("invokespecial $LIST_CLASS/<init>()V", pops = 1)
+                code.invokespecial(ARRAY_LIST, "<init>", MTD_void)
                 return
             }
             1 -> {
@@ -133,10 +152,10 @@ internal class BuiltinGenerator(private val method: MethodGenerator) {
             else -> {
                 boxed(arguments[0])
                 method.expression(arguments[1])
-                code.emit("swap", pops = 2, pushes = 2)
+                code.swap()
             }
         }
-        code.emit("invokestatic java/util/Collections/nCopies(ILjava/lang/Object;)Ljava/util/List;", pops = 2, pushes = 1)
+        code.invokestatic(COLLECTIONS, "nCopies", MethodTypeDesc.of(LIST, CD_int, CD_Object))
         copyList()
     }
 
@@ -149,11 +168,15 @@ internal class BuiltinGenerator(private val method: MethodGenerator) {
                 when (name) {
                     "And", "Or", "Xor" -> {
                         method.expression(arguments.single())
-                        code.emit("i${name.lowercase()}", pops = 2, pushes = 1)
+                        when (name) {
+                            "And" -> code.iand()
+                            "Or" -> code.ior()
+                            else -> code.ixor()
+                        }
                     }
                     "Not" -> {
                         integer(1)
-                        code.emit("ixor", pops = 2, pushes = 1)
+                        code.ixor()
                     }
                     "toInteger" -> Unit
                     else -> error("Unknown Boolean method $name")
@@ -173,9 +196,9 @@ internal class BuiltinGenerator(private val method: MethodGenerator) {
         method.expression(receiver)
         when (name) {
             "UnaryMinus" -> negate(type)
-            "toInteger" -> code.emit("d2i", pops = 2, pushes = 1)
-            "toReal" -> code.emit("i2d", pops = 1, pushes = 2)
-            "toBoolean" -> comparison("ifne", 1)
+            "toInteger" -> code.d2i()
+            "toReal" -> code.i2d()
+            "toBoolean" -> comparison(Opcode.IFNE)
             else -> error("Unknown numeric method $name")
         }
     }
@@ -192,7 +215,7 @@ internal class BuiltinGenerator(private val method: MethodGenerator) {
                 val element = elementType(type)
                 method.expression(arguments[0])
                 method.expressionAs(arguments[1], element)
-                code.emit("${elementPrefix(element)}astore", pops = 2 + slots(element))
+                code.arrayStore(typeKind(element))
             }
             "toList" -> arrayToList(type)
             "head" -> {
@@ -200,15 +223,15 @@ internal class BuiltinGenerator(private val method: MethodGenerator) {
                 get(type)
             }
             "tail" -> {
-                code.emit("dup", pops = 1, pushes = 2)
+                code.dup()
                 length(type)
                 integer(1)
-                code.emit("swap", pops = 2, pushes = 2)
-                code.emit("invokevirtual $LIST_CLASS/subList(II)Ljava/util/List;", pops = 3, pushes = 1)
+                code.swap()
+                code.invokevirtual(ARRAY_LIST, "subList", MethodTypeDesc.of(LIST, CD_int, CD_int))
                 copyList()
             }
             "append" -> {
-                code.emit("dup", pops = 1, pushes = 2)
+                code.dup()
                 boxed(arguments.single())
                 addElement()
             }
@@ -217,17 +240,18 @@ internal class BuiltinGenerator(private val method: MethodGenerator) {
     }
 
     fun length(collection: String) {
-        val instruction = if (collection.startsWith("Array[")) "arraylength" else "invokevirtual $LIST_CLASS/size()I"
-        code.emit(instruction, pops = 1, pushes = 1)
+        if (collection.startsWith("Array[")) code.arraylength()
+        else code.invokevirtual(ARRAY_LIST, "size", MethodTypeDesc.of(CD_int))
     }
 
     fun get(collection: String) {
         val element = elementType(collection)
         if (collection.startsWith("Array[")) {
-            code.emit("${elementPrefix(element)}aload", pops = 2, pushes = slots(element))
+            code.arrayLoad(typeKind(element))
             return
         }
-        code.emit("invokevirtual $LIST_CLASS/get(I)Ljava/lang/Object;", pops = 2, pushes = 1)
+        code.invokevirtual(ARRAY_LIST, "get", MethodTypeDesc.of(CD_Object, CD_int))
+        val elementType = typeSymbol(element)
         val wrapper = boxedClass(element)
         if (wrapper != null) {
             val unbox = when (element) {
@@ -235,10 +259,10 @@ internal class BuiltinGenerator(private val method: MethodGenerator) {
                 "Boolean" -> "booleanValue"
                 else -> "doubleValue"
             }
-            code.emit("checkcast $wrapper", pops = 1, pushes = 1)
-            code.emit("invokevirtual $wrapper/$unbox()${descriptor(element)}", pops = 1, pushes = slots(element))
-        } else if (descriptor(element) != "Ljava/lang/Object;") {
-            code.emit("checkcast ${referenceName(element)}", pops = 1, pushes = 1)
+            code.checkcast(wrapper)
+            code.invokevirtual(wrapper, unbox, MethodTypeDesc.of(elementType))
+        } else if (elementType != CD_Object) {
+            code.checkcast(elementType)
         }
     }
 
@@ -248,32 +272,31 @@ internal class BuiltinGenerator(private val method: MethodGenerator) {
         val index = code.local("Integer")
         code.store(array, arraySlot)
         newList()
-        code.emit("invokespecial $LIST_CLASS/<init>()V", pops = 1)
+        code.invokespecial(ARRAY_LIST, "<init>", MTD_void)
         code.store("List[Class]", listSlot)
         integer(0)
         code.store("Integer", index)
-        val start = code.label()
-        val end = code.label()
-        code.place(start)
+        val start = code.newBoundLabel()
+        val end = code.newLabel()
         code.load("Integer", index)
         code.load(array, arraySlot)
         length(array)
-        code.branch("if_icmpge", end, 2)
+        code.if_icmpge(end)
         code.load("List[Class]", listSlot)
         code.load(array, arraySlot)
         code.load("Integer", index)
         get(array)
         code.box(elementType(array))
         addElement()
-        code.emit("iinc $index 1")
-        code.jump(start)
-        code.place(end)
+        code.iinc(index, 1)
+        code.goto_(start)
+        code.labelBinding(end)
         code.load("List[Class]", listSlot)
     }
 
     private fun newList() {
-        code.emit("new $LIST_CLASS", pushes = 1)
-        code.emit("dup", pops = 1, pushes = 2)
+        code.new_(ARRAY_LIST)
+        code.dup()
     }
 
     private fun copyList() {
@@ -281,12 +304,12 @@ internal class BuiltinGenerator(private val method: MethodGenerator) {
         code.store("Class", source)
         newList()
         code.load("Class", source)
-        code.emit("invokespecial $LIST_CLASS/<init>(Ljava/util/Collection;)V", pops = 2)
+        code.invokespecial(ARRAY_LIST, "<init>", MethodTypeDesc.of(CD_void, COLLECTION))
     }
 
     private fun addElement() {
-        code.emit("invokevirtual $LIST_CLASS/add(Ljava/lang/Object;)Z", pops = 2, pushes = 1)
-        code.discard("Boolean")
+        code.invokevirtual(ARRAY_LIST, "add", MethodTypeDesc.of(CD_boolean, CD_Object))
+        code.pop()
     }
 
     private fun boxed(value: Expression) {
@@ -294,27 +317,24 @@ internal class BuiltinGenerator(private val method: MethodGenerator) {
         code.box(method.typeOf(value))
     }
 
-    private fun elementPrefix(type: String): String = if (type == "Boolean") "b" else instructionPrefix(type)
+    private fun negate(type: String) = if (type == "Real") code.dneg() else code.ineg()
 
-    private fun negate(type: String) = code.emit("${instructionPrefix(type)}neg", pops = slots(type), pushes = slots(type))
+    private fun integer(value: Int) = code.loadConstant(value)
 
-    private fun integer(value: Int) {
-        val instruction = when (value) {
-            -1 -> "iconst_m1"
-            in 0..5 -> "iconst_$value"
-            in Byte.MIN_VALUE..Byte.MAX_VALUE -> "bipush $value"
-            in Short.MIN_VALUE..Short.MAX_VALUE -> "sipush $value"
-            else -> "ldc_w $value"
-        }
-        code.emit(instruction, pushes = 1)
-    }
-
-    private fun real(value: Double) = code.emit("ldc2_w $value", pushes = 2)
+    private fun real(value: Double) = code.loadConstant(value)
 
     private companion object {
         val numericOperations = mapOf(
-            "Plus" to "add", "Minus" to "sub", "Mult" to "mul", "Div" to "div", "Rem" to "rem",
-            "Less" to "lt", "LessEqual" to "le", "Greater" to "gt", "GreaterEqual" to "ge", "Equal" to "eq",
+            "Plus" to NumericOperation.ADD,
+            "Minus" to NumericOperation.SUBTRACT,
+            "Mult" to NumericOperation.MULTIPLY,
+            "Div" to NumericOperation.DIVIDE,
+            "Rem" to NumericOperation.REMAINDER,
+            "Less" to NumericOperation.LESS,
+            "LessEqual" to NumericOperation.LESS_EQUAL,
+            "Greater" to NumericOperation.GREATER,
+            "GreaterEqual" to NumericOperation.GREATER_EQUAL,
+            "Equal" to NumericOperation.EQUAL,
         )
     }
 }
