@@ -1,0 +1,32 @@
+class ObservatorySchedule is
+    method logEntries(sessions : Integer) : Integer is
+        if sessions <= 0 then
+            return 0
+        end
+        if sessions == 1 then
+            return 1
+        end
+        var left : sessions / 2
+        return 1 + logEntries(left) + logEntries(sessions - left)
+    end
+
+    method setupHours(hours : Integer) : Real => Real(hours).Div(4).Mult(1.5)
+
+    method main is
+        var clearSky : Boolean(true)
+        var primaryOperator : true
+        var backupOperator : false
+        var maintenance : false
+        var oneOperator : primaryOperator.Xor(backupOperator)
+        var canOpen : clearSky.And(oneOperator).And(maintenance.Not)
+
+        println("Night log entries for five sessions:")
+        println(logEntries(5))
+        println("Extra setup hours:")
+        println(setupHours(10))
+        println("Whole extra setup minutes:")
+        println(Integer(setupHours(10) * 60))
+        println("Observatory can open:")
+        println(canOpen)
+    end
+end

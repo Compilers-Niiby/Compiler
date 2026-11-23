@@ -1,0 +1,53 @@
+class HarborInventory is
+    method count(values : List[Integer]) : Integer is
+        var total : 0
+        for value in values loop
+            total := total + value
+        end
+        return total
+    end
+
+    method count(values : List[Boolean]) : Integer is
+        var total : 0
+        for value in values loop
+            total := total + value.toInteger
+        end
+        return total
+    end
+
+    method main is
+        var east : Array[Integer](3)
+        east.set(0, 4)
+        east.set(1, 6)
+        east.set(2, 3)
+        var west : Array[Integer](2)
+        west.set(0, 7)
+        west.set(1, 2)
+
+        var quays : Array[Array[Integer]](2)
+        quays.set(0, east)
+        quays.set(1, west)
+
+        var crates : 0
+        for quay in quays loop
+            crates := crates + count(quay.toList)
+        end
+
+        var reserve : List[Integer](2, 2)
+        reserve.append(west.get(0))
+        var sealed : List[Boolean](true)
+        sealed.append(false)
+        sealed.append(true)
+
+        println("Quays:")
+        println(quays.Length)
+        println("Crates in storage:")
+        println(crates)
+        println("Crates in reserve after the first batch:")
+        println(count(reserve.tail))
+        println("First count from the east quay:")
+        println(east.toList.head)
+        println("Sealed reserve batches:")
+        println(count(sealed))
+    end
+end

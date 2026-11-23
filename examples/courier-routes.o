@@ -1,0 +1,40 @@
+class Parcel is
+    var distance : 0
+    method charge : Integer => distance
+    method receipt : Parcel => this
+end
+
+class ColdParcel extends Parcel is
+    var icePacks : 0
+
+    this(kilometers : Integer) is
+        this.distance := kilometers
+        this.icePacks := 1
+    end
+
+    this(kilometers : Integer, packs : Integer) is
+        this.distance := kilometers
+        this.icePacks := packs
+    end
+
+    method charge : Integer => this.distance * 2 + this.icePacks * 3
+    method receipt : ColdParcel => this
+end
+
+class CourierRoutes is
+    method quote(parcel : Parcel) : Integer => parcel.receipt().charge()
+    method quote(kilometers : Integer) : Integer => kilometers * 2
+
+    method main is
+        var clinic : ColdParcel(4, 2)
+        var grocer : ColdParcel(3)
+        var total : quote(clinic) + quote(grocer) + quote(2)
+
+        println("Clinic delivery:")
+        println(quote(clinic))
+        println("Grocery delivery:")
+        println(quote(grocer))
+        println("Total with return trip:")
+        println(total)
+    end
+end

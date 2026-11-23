@@ -26,6 +26,7 @@ export JAVA_HOME=$(/usr/libexec/java_home -v 25)
 
 ```bash
 make test
+make runFile examples/hello-sum.o  # Собрать и запустить программу на O
 make run                         # Разбить examples/demo.o на токены
 make parse                       # Разобрать examples/demo.o и вывести AST
 make parse FILE=examples/syntax.o # Разобрать расширенный пример синтаксиса
@@ -82,6 +83,26 @@ Program @ 1:1
 Вызов через Kotlin API: `Parser(Lexer(source).tokenize()).parse()`. Каждый узел AST хранит полный диапазон исходного текста, включая смещения и конечную позицию.
 
 ### Генерация и запуск байткода JVM
+
+```bash
+make runFile examples/hello-sum.o
+# Для файлов из examples можно указать только имя
+make runFile courier-routes.o
+# Для пути с пробелами используйте FILE
+make runFile FILE='path with spaces/program.o'
+```
+
+`make runFile` передаёт исходник режиму `--run`. Компилятор находит единственный класс, в котором объявлен `method main` без параметров и возвращаемого значения, собирает классы во временную папку и запускает JVM с обычным вводом и выводом.
+
+| Пример | Что проверяет | Ожидаемый результат |
+| --- | --- | --- |
+| [hello-sum.o](examples/hello-sum.o) | `main`, строки, консольный ввод и вывод, сложение | `7 5` → `12` |
+| [greenhouse-night.o](examples/greenhouse-night.o) | `while`, `if/else`, присваивания, вещественная арифметика и числовые методы | `16 4` → `18.0`, `10 2` → `11.0`. Вводы дают разные ветки решения |
+| [courier-routes.o](examples/courier-routes.o) | Наследование, поля, `this`, перегрузки методов и конструкторов, цепочка вызовов через родительский тип | Тарифы `14` и `9`, итог с обратной поездкой `27` |
+| [harbor-inventory.o](examples/harbor-inventory.o) | Вложенные массивы, `Array` и `List`, циклы `for`, перегрузка по типу элементов | `2` причала, `22` ящика, `9` ящиков в остатке резерва |
+| [observatory-schedule.o](examples/observatory-schedule.o) | Рекурсия, ранние возвраты, логические операции, смешанная арифметика и преобразования типов | `9` записей, `3.75` часа или `225` минут, открытие разрешено |
+
+Для сохранения байткода отдельно используйте `--generate`.
 
 ```bash
 mvn -q compile exec:java -Dexec.args="--generate examples/hello-sum.o"
@@ -449,7 +470,7 @@ arguments     = "(", [ expression, { ",", expression } ], ")" ;
 
 ## Проверка
 
-Запустить тесты можно командами `make test`, `mvn test` или `.\mvnw.cmd test` на Windows. Сейчас в наборе 77 тестов:
+Запустить тесты можно командами `make test`, `mvn test` или `.\mvnw.cmd test` на Windows. Сейчас в наборе 78 тестов:
 
 | Файл тестов | Количество | Что проверяется |
 | --- | --- | --- |
@@ -458,7 +479,7 @@ arguments     = "(", [ expression, { ",", expression } ], ")" ;
 | [`AstPrinterTest.kt`](src/test/kotlin/team/niiby/compiler/parser/AstPrinterTest.kt) | 1 | Точный вывод дерева и позиции узлов для разобранного примера |
 | [`AnalyzerTest.kt`](src/test/kotlin/team/niiby/compiler/analyzer/AnalyzerTest.kt) | 9 | Имена, типы, вызовы, наследование, коллекции и неизменность AST |
 | [`OptimizerTest.kt`](src/test/kotlin/team/niiby/compiler/analyzer/OptimizerTest.kt) | 5 | Свёртка констант, упрощение управления, недостижимый код и сохранение областей видимости |
-| [`JvmGeneratorTest.kt`](src/test/kotlin/team/niiby/compiler/generator/JvmGeneratorTest.kt) | 7 | Загрузка и запуск сгенерированных классов, ввод и вывод, наследование, перегрузки и диагностика |
+| [`JvmGeneratorTest.kt`](src/test/kotlin/team/niiby/compiler/generator/JvmGeneratorTest.kt) | 8 | Загрузка и запуск сгенерированных классов, ввод и вывод, наследование, перегрузки и примеры |
 
 Тесты также разбирают файлы примеров. Они проверяют типы узлов, дочерние узлы и соответствующие участки исходного текста. Одной проверки успешного разбора недостаточно, чтобы обнаружить ошибку в структуре AST.
 

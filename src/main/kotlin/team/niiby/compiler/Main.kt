@@ -18,18 +18,21 @@ import team.niiby.compiler.lexer.Lexer
 import team.niiby.compiler.lexer.LexerException
 import team.niiby.compiler.lexer.Token
 import team.niiby.compiler.parser.AstPrinter
+import team.niiby.compiler.parser.MethodDeclaration
 import team.niiby.compiler.parser.Parser
 import team.niiby.compiler.parser.ParserException
+import team.niiby.compiler.parser.Program
 
 private const val USAGE = "Usage: compiler [--tokens|--parse|--analyze|--optimize] [source-file]\n" +
-    "       compiler --generate [source-file] [output-directory]"
-private val MODES = setOf("--tokens", "--parse", "--analyze", "--optimize", "--generate")
+    "       compiler --generate [source-file] [output-directory]\n" +
+    "       compiler --run source-file"
+private val MODES = setOf("--tokens", "--parse", "--analyze", "--optimize", "--generate", "--run")
 private const val DEFAULT_CLASS_OUTPUT = "target/generated-classes"
 
 fun main(args: Array<String>) {
     if (args.contentEquals(arrayOf("--help"))) {
         println(USAGE)
-        println("Without a file, reads standard input. The default mode is --tokens.")
+        println("Most modes can read O code from standard input. The default mode is --tokens.")
         println("--generate writes JVM class files to $DEFAULT_CLASS_OUTPUT by default.")
         return
     }
@@ -38,7 +41,7 @@ fun main(args: Array<String>) {
     val mode = option ?: "--tokens"
     val files = if (option == null) args.toList() else args.drop(1)
     val maxFiles = if (mode == "--generate") 2 else 1
-    if (files.size > maxFiles || files.any { it.startsWith("--") }) {
+    if (files.size > maxFiles || files.any { it.startsWith("--") } || mode == "--run" && files.isEmpty()) {
         System.err.println(USAGE)
         exitProcess(2)
     }
@@ -52,12 +55,19 @@ fun main(args: Array<String>) {
         val tokens = Lexer(source).tokenize()
         if (mode != "--tokens") {
             val program = Parser(tokens).parse()
-            if (mode == "--generate") {
-                val output = Path.of(files.getOrNull(1) ?: DEFAULT_CLASS_OUTPUT)
-                writeClassFiles(output, JvmGenerator().generate(program))
-            } else {
-                if (mode != "--parse") Analyzer().analyze(program)
-                print(AstPrinter().print(if (mode == "--optimize") Optimizer().optimize(program) else program))
+            when (mode) {
+                "--generate" -> {
+                    val output = Path.of(files.getOrNull(1) ?: DEFAULT_CLASS_OUTPUT)
+                    writeClassFiles(output, JvmGenerator().generate(program))
+                }
+                "--run" -> {
+                    val status = runProgram(program)
+                    if (status != 0) exitProcess(status)
+                }
+                else -> {
+                    if (mode != "--parse") Analyzer().analyze(program)
+                    print(AstPrinter().print(if (mode == "--optimize") Optimizer().optimize(program) else program))
+                }
             }
         } else printTokens(tokens)
     } catch (error: SemanticException) {
@@ -73,12 +83,36 @@ fun main(args: Array<String>) {
         System.err.println("Generation error: ${error.message}")
         exitProcess(1)
     } catch (error: IOException) {
-        val kind = if (mode == "--generate") "I/O" else "Input"
+        val kind = if (mode == "--generate" || mode == "--run") "I/O" else "Input"
         System.err.println("$kind error: ${error.message}")
         exitProcess(1)
     } catch (error: InvalidPathException) {
         System.err.println("Input error: ${error.message}")
         exitProcess(1)
+    }
+}
+
+private fun runProgram(program: Program): Int {
+    val generated = JvmGenerator().generate(program)
+    val entryPoints = program.classes.filter { declaration ->
+        declaration.members.any { it is MethodDeclaration && it.name == "main" && it.parameters.isEmpty() && it.returnType == null }
+    }
+    val entryPoint = when (entryPoints.size) {
+        0 -> throw GenerationException("Expected a parameterless method main without a return type", program.span.start)
+        1 -> entryPoints.single().type.name
+        else -> {
+            val names = entryPoints.joinToString(", ") { it.type.name }
+            throw GenerationException("Multiple classes declare main: $names", program.span.start)
+        }
+    }
+    val output = Files.createTempDirectory("o-run-")
+    try {
+        writeClassFiles(output, generated)
+        val java = Path.of(System.getProperty("java.home"), "bin", "java")
+        return ProcessBuilder(java.toString(), "-cp", output.toString(), entryPoint).inheritIO().start().waitFor()
+    } finally {
+        for (name in generated.keys) Files.deleteIfExists(output.resolve(name))
+        Files.deleteIfExists(output)
     }
 }
 

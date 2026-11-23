@@ -1,0 +1,33 @@
+class GreenhouseNight is
+    method forecast(initial : Real, hours : Integer) : Real is
+        var temperature : initial
+        var hour : 0
+        while hour < hours loop
+            if hour.Rem(2).Equal(0) then
+                temperature := temperature.Plus(1.5)
+            else
+                temperature := temperature.Minus(0.5)
+            end
+            hour := hour + 1
+        end
+        return temperature
+    end
+
+    method withinRange(temperature : Real) : Boolean =>
+        temperature.GreaterEqual(18).And(temperature.LessEqual(30))
+
+    method main is
+        println("Enter the starting temperature and the number of hours:")
+        var start : readInteger()
+        var hours : readInteger()
+        var predicted : forecast(start.toReal, hours)
+
+        println("Forecast:")
+        println(predicted)
+        if withinRange(predicted) then
+            println("Seedlings can stay overnight.")
+        else
+            println("Move the seedlings to the warm bench.")
+        end
+    end
+end

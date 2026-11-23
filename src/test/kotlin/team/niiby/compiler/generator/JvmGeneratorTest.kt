@@ -24,19 +24,56 @@ class JvmGeneratorTest {
 
     @Test
     fun `HelloSum launches on the JVM and sums both console inputs`(@TempDir output: Path) {
-        val demo = Files.readString(Path.of("examples", "hello-sum.o"))
+        val lines = runExample("hello-sum.o", "HelloSum", output, "-7 12\n")
+        assertEquals(listOf("Hello, world!", "Enter two integers:", "Sum:", "5"), lines)
+    }
+
+    @Test
+    fun `examples exercise control flow collections dispatch and recursion`(@TempDir output: Path) {
+        val greenhousePrompt = "Enter the starting temperature and the number of hours:"
+        assertEquals(
+            listOf(greenhousePrompt, "Forecast:", "18.0", "Seedlings can stay overnight."),
+            runExample("greenhouse-night.o", "GreenhouseNight", output.resolve("warm"), "16 4\n"),
+        )
+        assertEquals(
+            listOf(greenhousePrompt, "Forecast:", "11.0", "Move the seedlings to the warm bench."),
+            runExample("greenhouse-night.o", "GreenhouseNight", output.resolve("cold"), "10 2\n"),
+        )
+        assertEquals(
+            listOf("Clinic delivery:", "14", "Grocery delivery:", "9", "Total with return trip:", "27"),
+            runExample("courier-routes.o", "CourierRoutes", output.resolve("courier")),
+        )
+        assertEquals(
+            listOf(
+                "Quays:", "2", "Crates in storage:", "22", "Crates in reserve after the first batch:", "9",
+                "First count from the east quay:", "4", "Sealed reserve batches:", "2",
+            ),
+            runExample("harbor-inventory.o", "HarborInventory", output.resolve("harbor")),
+        )
+        assertEquals(
+            listOf(
+                "Night log entries for five sessions:", "9", "Extra setup hours:", "3.75",
+                "Whole extra setup minutes:", "225", "Observatory can open:", "true",
+            ),
+            runExample("observatory-schedule.o", "ObservatorySchedule", output.resolve("observatory")),
+        )
+    }
+
+    private fun runExample(source: String, entryPoint: String, output: Path, input: String = ""): List<String> {
+        val demo = Files.readString(Path.of("examples", source))
+        Files.createDirectories(output)
         for ((name, bytes) in generate(demo)) Files.write(output.resolve(name), bytes)
 
         val java = Path.of(System.getProperty("java.home"), "bin", "java").toString()
-        val process = ProcessBuilder(java, "-Xverify:all", "-cp", output.toString(), "HelloSum")
+        val process = ProcessBuilder(java, "-Xverify:all", "-cp", output.toString(), entryPoint)
             .redirectErrorStream(true)
             .start()
         try {
-            process.outputStream.bufferedWriter().use { it.write("-7 12\n") }
-            assertTrue(process.waitFor(10, TimeUnit.SECONDS), "HelloSum did not finish")
+            process.outputStream.bufferedWriter().use { it.write(input) }
+            assertTrue(process.waitFor(10, TimeUnit.SECONDS), "$entryPoint did not finish")
             val lines = process.inputStream.bufferedReader().use { it.readLines() }
             assertEquals(0, process.exitValue(), lines.joinToString("\n"))
-            assertEquals(listOf("Hello, world!", "Enter two integers:", "Sum:", "5"), lines)
+            return lines
         } finally {
             if (process.isAlive) process.destroyForcibly()
         }
