@@ -34,6 +34,18 @@ class Analyzer {
     private val parents = mapOf("Integer" to "AnyValue", "Real" to "AnyValue", "Boolean" to "AnyValue", "AnyValue" to "Class", "AnyRef" to "Class", "Array" to "AnyRef", "List" to "AnyRef")
     private val builtins = parents.keys + "Class"
     private lateinit var owner: ClassDeclaration
+    private var resolution: SemanticInfo? = null
+
+    internal fun resolve(program: Program): SemanticInfo {
+        val result = SemanticInfo()
+        resolution = result
+        try {
+            analyze(program)
+        } finally {
+            resolution = null
+        }
+        return result
+    }
 
     fun analyze(program: Program): Program {
         classes.clear()
@@ -80,7 +92,7 @@ class Analyzer {
                     is MethodDeclaration -> {
                         val scope = parameters(member.parameters)
                         val expected = member.returnType?.let { type(it) } ?: "Void"
-                        val inherited = methods(parent(declaration.type.name), member.name).firstOrNull {
+                        val inherited = methods(parent(declaration.type.name), member.name).map { it.declaration }.firstOrNull {
                             it.parameters.map { p -> type(p.type) } == member.parameters.map { p -> type(p.type) }
                         }
                         if (inherited != null && !assignable(expected, inherited.returnType?.let { type(it) } ?: "Void")) fail("Incompatible override return type", member)
@@ -121,10 +133,10 @@ class Analyzer {
                 }
                 is AssignmentStatement -> {
                     val target = when (val target = statement.target) {
-                        is NameExpression -> scope[target.name] ?: field(owner.type.name, target.name, target)
+                        is NameExpression -> scope[target.name] ?: fieldReference(owner.type.name, target.name, target)
                         is MemberExpression -> {
                             if (target.receiver !is ThisExpression) fail("Fields of another object are read-only", target)
-                            field(owner.type.name, target.name, target)
+                            fieldReference(owner.type.name, target.name, target)
                         }
                         else -> fail("Invalid assignment target", target)
                     }
@@ -150,7 +162,10 @@ class Analyzer {
         }
     }
 
-    private fun expression(node: Expression, scope: Map<String, String>): String = when (node) {
+    private fun expression(node: Expression, scope: Map<String, String>): String =
+        expressionType(node, scope).also { resolution?.types?.set(node, it) }
+
+    private fun expressionType(node: Expression, scope: Map<String, String>): String = when (node) {
         is LiteralExpression -> when (node.kind) {
             TokenType.INTEGER_LITERAL -> "Integer"
             TokenType.REAL_LITERAL -> "Real"
@@ -160,12 +175,12 @@ class Analyzer {
         is GroupedExpression -> expression(node.expression, scope)
         is NameExpression -> scope[node.name] ?: when {
             node.name in classes || node.name in builtins -> construct(node.name, node.typeArguments.map { type(it) }, emptyList(), node)
-            hasField(owner.type.name, node.name) -> field(owner.type.name, node.name, node)
+            hasField(owner.type.name, node.name) -> fieldReference(owner.type.name, node.name, node)
             else -> call(owner.type.name, node.name, emptyList(), node)
         }
         is MemberExpression -> {
             val receiver = if (node.receiver is NameExpression && node.receiver.name in listOf("Integer", "Real") && node.name in listOf("Min", "Max", "Epsilon")) node.receiver.name else expression(node.receiver, scope)
-            if (hasField(receiver, node.name)) field(receiver, node.name, node) else call(receiver, node.name, emptyList(), node)
+            if (hasField(receiver, node.name)) fieldReference(receiver, node.name, node) else call(receiver, node.name, emptyList(), node)
         }
         is CallExpression -> {
             val arguments = node.arguments.map { expression(it, scope) }
@@ -205,9 +220,11 @@ class Analyzer {
             if (arguments.size != 1 || arguments[0] !in allowed) fail("Invalid $name constructor arguments", node)
         } else if (name in classes) {
             val constructors = classes.getValue(name).members.filterIsInstance<ConstructorDeclaration>()
-            if (constructors.isEmpty()) {
+            val constructor = if (constructors.isEmpty()) {
                 if (arguments.isNotEmpty()) fail("No matching constructor for $name", node)
-            } else select(constructors.map { it.parameters.map { p -> type(p.type) } }, arguments, node)
+                null
+            } else constructors[select(constructors.map { it.parameters.map { p -> type(p.type) } }, arguments, node)]
+            resolution?.constructors?.set(node, ResolvedConstructor(name, constructor))
         } else fail("Cannot construct $name", node)
         return name
     }
@@ -244,8 +261,9 @@ class Analyzer {
             }
         }
         val candidates = methods(receiver, name)
-        val selected = select(candidates.map { it.parameters.map { p -> type(p.type) } }, arguments, node)
-        return candidates[selected].returnType?.let { type(it) } ?: "Void"
+        val selected = candidates[select(candidates.map { it.declaration.parameters.map { p -> type(p.type) } }, arguments, node)]
+        resolution?.methods?.set(node, selected)
+        return selected.declaration.returnType?.let { type(it) } ?: "Void"
     }
 
     private fun select(signatures: List<List<String>>, arguments: List<String>, node: AstNode): Int {
@@ -255,11 +273,12 @@ class Analyzer {
         return best.single()
     }
 
-    private fun methods(name: String?, method: String): List<MethodDeclaration> {
+    private fun methods(name: String?, method: String): List<ResolvedMethod> {
         if (name == null) return emptyList()
         val own = classes[name]?.members?.filterIsInstance<MethodDeclaration>()?.filter { it.name == method } ?: emptyList()
         val signatures = own.map { it.parameters.map { p -> type(p.type) } }
-        return own + methods(parent(name), method).filter { it.parameters.map { p -> type(p.type) } !in signatures }
+        return own.map { ResolvedMethod(name, it) } +
+            methods(parent(name), method).filter { it.declaration.parameters.map { p -> type(p.type) } !in signatures }
     }
 
     private fun hasField(name: String?, field: String): Boolean = name != null && (
@@ -267,8 +286,23 @@ class Analyzer {
             name in listOf("Integer", "Real") && field in listOf("Min", "Max") || name == "Real" && field == "Epsilon" || hasField(parent(name), field)
         )
 
+    private fun fieldReference(name: String, member: String, node: AstNode): String {
+        val type = field(name, member, node)
+        resolution?.let {
+            val declaringClass = generateSequence(name, ::parent).first { candidate ->
+                classes[candidate]?.members?.any { it is VariableDeclaration && it.name == member } == true ||
+                    isNumericConstant(candidate, member)
+            }
+            it.fields[node] = ResolvedField(declaringClass, member, type)
+        }
+        return type
+    }
+
+    private fun isNumericConstant(owner: String, field: String) =
+        owner in listOf("Integer", "Real") && field in listOf("Min", "Max") || owner == "Real" && field == "Epsilon"
+
     private fun field(name: String, field: String, node: AstNode): String {
-        if (name in listOf("Integer", "Real") && field in listOf("Min", "Max") || name == "Real" && field == "Epsilon") return name
+        if (isNumericConstant(name, field)) return name
         fields[name]?.get(field)?.let { return it }
         val declaration = classes[name]?.members?.filterIsInstance<VariableDeclaration>()?.firstOrNull { it.name == field }
         if (declaration == null) return parent(name)?.let { field(it, field, node) } ?: fail("Unknown variable or field '$field'", node)
