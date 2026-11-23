@@ -31,7 +31,16 @@ class Analyzer {
     private val classes = linkedMapOf<String, ClassDeclaration>()
     private val fields = mutableMapOf<String, MutableMap<String, String>>()
     private val activeFields = mutableSetOf<String>()
-    private val parents = mapOf("Integer" to "AnyValue", "Real" to "AnyValue", "Boolean" to "AnyValue", "AnyValue" to "Class", "AnyRef" to "Class", "Array" to "AnyRef", "List" to "AnyRef")
+    private val parents = mapOf(
+        "Integer" to "AnyValue",
+        "Real" to "AnyValue",
+        "Boolean" to "AnyValue",
+        "AnyValue" to "Class",
+        "AnyRef" to "Class",
+        "Array" to "AnyRef",
+        "List" to "AnyRef",
+        STRING_VALUE_TYPE to "AnyRef",
+    )
     private val builtins = parents.keys + "Class"
     private lateinit var owner: ClassDeclaration
     private var resolution: SemanticInfo? = null
@@ -169,14 +178,16 @@ class Analyzer {
         is LiteralExpression -> when (node.kind) {
             TokenType.INTEGER_LITERAL -> "Integer"
             TokenType.REAL_LITERAL -> "Real"
-            else -> "Boolean"
+            TokenType.BOOLEAN_LITERAL -> "Boolean"
+            TokenType.STRING_LITERAL -> STRING_VALUE_TYPE
+            else -> error("Unexpected literal kind ${node.kind}")
         }
         is ThisExpression -> owner.type.name
         is GroupedExpression -> expression(node.expression, scope)
         is NameExpression -> scope[node.name] ?: when {
             node.name in classes || node.name in builtins -> construct(node.name, node.typeArguments.map { type(it) }, emptyList(), node)
             hasField(owner.type.name, node.name) -> fieldReference(owner.type.name, node.name, node)
-            else -> call(owner.type.name, node.name, emptyList(), node)
+            else -> call(owner.type.name, node.name, emptyList(), node, allowConsole = true)
         }
         is MemberExpression -> {
             val receiver = if (node.receiver is NameExpression && node.receiver.name in listOf("Integer", "Real") && node.name in listOf("Min", "Max", "Epsilon")) node.receiver.name else expression(node.receiver, scope)
@@ -189,7 +200,7 @@ class Analyzer {
                     construct(callee.name, callee.typeArguments.map { type(it) }, arguments, node)
                 } else {
                     if (callee.name in scope || hasField(owner.type.name, callee.name)) fail("Variable '${callee.name}' is not callable", callee)
-                    call(owner.type.name, callee.name, arguments, node)
+                    call(owner.type.name, callee.name, arguments, node, allowConsole = true)
                 }
                 is MemberExpression -> call(expression(callee.receiver, scope), callee.name, arguments, node)
                 else -> fail("Expression is not callable", callee)
@@ -229,7 +240,7 @@ class Analyzer {
         return name
     }
 
-    private fun call(receiver: String, name: String, arguments: List<String>, node: AstNode): String {
+    private fun call(receiver: String, name: String, arguments: List<String>, node: AstNode, allowConsole: Boolean = false): String {
         if (receiver in listOf("Integer", "Real")) {
             if (name in listOf("Plus", "Minus", "Mult", "Div", "Rem", "Less", "LessEqual", "Greater", "GreaterEqual", "Equal")) {
                 if (arguments.size != 1 || arguments[0] !in listOf("Integer", "Real") || name == "Rem" && arguments[0] != "Integer") fail("Invalid arguments for $name", node)
@@ -261,6 +272,22 @@ class Analyzer {
             }
         }
         val candidates = methods(receiver, name)
+        if (allowConsole && candidates.isEmpty()) {
+            when (name) {
+                "readInteger" -> {
+                    if (arguments.isNotEmpty()) fail("readInteger expects no arguments", node)
+                    resolution?.consoleCalls?.set(node, ConsoleCall.READ_INTEGER)
+                    return "Integer"
+                }
+                "println" -> {
+                    if (arguments.singleOrNull() !in setOf(STRING_VALUE_TYPE, "Integer", "Real", "Boolean")) {
+                        fail("println expects one string, integer, real, or boolean value", node)
+                    }
+                    resolution?.consoleCalls?.set(node, ConsoleCall.PRINTLN)
+                    return "Void"
+                }
+            }
+        }
         val selected = candidates[select(candidates.map { it.declaration.parameters.map { p -> type(p.type) } }, arguments, node)]
         resolution?.methods?.set(node, selected)
         return selected.declaration.returnType?.let { type(it) } ?: "Void"

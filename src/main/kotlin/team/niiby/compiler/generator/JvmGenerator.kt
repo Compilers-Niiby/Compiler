@@ -18,6 +18,7 @@ import java.lang.constant.ConstantDescs.CD_void
 import java.lang.constant.ConstantDescs.MTD_void
 import java.lang.constant.MethodTypeDesc
 import team.niiby.compiler.analyzer.Analyzer
+import team.niiby.compiler.analyzer.ConsoleCall
 import team.niiby.compiler.analyzer.SemanticInfo
 import team.niiby.compiler.parser.Block
 import team.niiby.compiler.parser.ClassDeclaration
@@ -28,7 +29,7 @@ import team.niiby.compiler.parser.Program
 import team.niiby.compiler.parser.VariableDeclaration
 
 class JvmGenerator {
-    /** Returns one JVM class file per O class, keyed by filename. */
+    /** Returns the JVM class files needed to run the program, keyed by filename. */
     fun generate(program: Program): Map<String, ByteArray> =
         ClassGenerator(program, Analyzer().resolve(program)).generate()
 }
@@ -54,8 +55,13 @@ internal class ClassGenerator(program: Program, private val semantics: SemanticI
         ),
     )
 
-    fun generate(): Map<String, ByteArray> = classes.values.associate { declaration ->
-        "${declaration.type.name}.class" to generateClass(declaration)
+    fun generate(): Map<String, ByteArray> = buildMap {
+        for (declaration in classes.values) {
+            put("${declaration.type.name}.class", generateClass(declaration))
+        }
+        if (semantics.consoleCalls.containsValue(ConsoleCall.READ_INTEGER)) {
+            put(JvmConsole.inputFilename, JvmConsole.generateInputClass(classFile))
+        }
     }
 
     // Hidden null String parameters distinguish constructors with identical erased signatures.

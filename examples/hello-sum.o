@@ -1,0 +1,10 @@
+class HelloSum is
+    method main is
+        println("Hello, world!")
+        println("Enter two integers:")
+        var first : readInteger()
+        var second : readInteger()
+        println("Sum:")
+        println(first + second)
+    end
+end

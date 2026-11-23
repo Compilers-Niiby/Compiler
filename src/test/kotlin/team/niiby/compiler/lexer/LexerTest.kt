@@ -57,6 +57,24 @@ class LexerTest {
     }
 
     @Test
+    fun `quoted strings preserve their lexeme and decode escapes`() {
+        val source = """"текст \"строка\"\n//" """
+        val token = Lexer(source).tokenize().first()
+        assertEquals(TokenType.STRING_LITERAL, token.type)
+        assertEquals(source.trimEnd(), token.lexeme)
+        assertEquals("текст \"строка\"\n//", decodeStringLiteral(token.lexeme))
+    }
+
+    @Test
+    fun `reports invalid escape and unterminated string locations`() {
+        val escape = assertThrows(LexerException::class.java) { Lexer("\"a\\q\"").tokenize() }
+        assertEquals(3, escape.position.column)
+        val unclosed = assertThrows(LexerException::class.java) { Lexer("\n\"hello\n").tokenize() }
+        assertEquals(2, unclosed.position.line)
+        assertEquals(1, unclosed.position.column)
+    }
+
+    @Test
     fun `dot after integer starts member access`() {
         val tokens = Lexer("2.Plus(3)").tokenize()
         assertEquals(listOf("2", ".", "Plus", "(", "3", ")", ""), tokens.map { it.lexeme })

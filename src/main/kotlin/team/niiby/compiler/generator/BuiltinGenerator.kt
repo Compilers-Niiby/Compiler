@@ -10,6 +10,7 @@ import java.lang.constant.ConstantDescs.CD_void
 import java.lang.constant.ConstantDescs.MTD_void
 import java.lang.constant.MethodTypeDesc
 import team.niiby.compiler.lexer.TokenType
+import team.niiby.compiler.lexer.decodeStringLiteral
 import team.niiby.compiler.parser.Expression
 import team.niiby.compiler.parser.GroupedExpression
 import team.niiby.compiler.parser.LiteralExpression
@@ -36,6 +37,7 @@ internal class BuiltinGenerator(private val method: MethodGenerator) {
                 real(value)
             }
             TokenType.BOOLEAN_LITERAL -> integer(if (literal.lexeme == "true") 1 else 0)
+            TokenType.STRING_LITERAL -> code.ldc(code.constantPool().stringEntry(decodeStringLiteral(literal.lexeme)))
             else -> error("Unexpected literal kind ${literal.kind}")
         }
     }

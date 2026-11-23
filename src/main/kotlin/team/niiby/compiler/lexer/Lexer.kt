@@ -18,6 +18,7 @@ class Lexer(private val source: String) {
             val token = when {
                 current().isIdentifierStart() -> scanIdentifier(start)
                 current().isDigit() -> scanNumber(start)
+                current() == '"' -> scanString(start)
                 else -> scanSymbol(start)
             }
             add(token)
@@ -101,6 +102,28 @@ class Lexer(private val source: String) {
         val lexeme = source.substring(start.offset, index)
         val type = if (isReal) TokenType.REAL_LITERAL else TokenType.INTEGER_LITERAL
         return token(type, lexeme, start)
+    }
+
+    private fun scanString(start: SourcePosition): Token {
+        advance()
+        while (!isAtEnd() && current() != '\n' && current() != '\r') {
+            when (current()) {
+                '"' -> {
+                    advance()
+                    return token(TokenType.STRING_LITERAL, source.substring(start.offset, index), start)
+                }
+                '\\' -> {
+                    val escape = position()
+                    advance()
+                    if (isAtEnd() || current() == '\n' || current() == '\r') break
+                    if (escapedStringCharacter(current()) == null) {
+                        throw LexerException("Invalid string escape '\\${current()}'", escape)
+                    }
+                }
+            }
+            advance()
+        }
+        throw LexerException("Unterminated string literal", start)
     }
 
     private fun scanSymbol(start: SourcePosition): Token {

@@ -6,6 +6,7 @@ enum class TokenType {
     INTEGER_LITERAL,
     REAL_LITERAL,
     BOOLEAN_LITERAL,
+    STRING_LITERAL,
 
     // Core O keywords
     CLASS,

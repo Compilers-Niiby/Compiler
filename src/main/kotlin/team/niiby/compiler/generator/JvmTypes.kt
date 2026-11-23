@@ -6,11 +6,13 @@ import java.lang.constant.ConstantDescs.CD_Boolean
 import java.lang.constant.ConstantDescs.CD_Double
 import java.lang.constant.ConstantDescs.CD_Integer
 import java.lang.constant.ConstantDescs.CD_Object
+import java.lang.constant.ConstantDescs.CD_String
 import java.lang.constant.ConstantDescs.CD_boolean
 import java.lang.constant.ConstantDescs.CD_double
 import java.lang.constant.ConstantDescs.CD_int
 import java.lang.constant.ConstantDescs.CD_void
 import java.lang.constant.MethodTypeDesc
+import team.niiby.compiler.analyzer.STRING_VALUE_TYPE
 import team.niiby.compiler.parser.MethodDeclaration
 import team.niiby.compiler.parser.Parameter
 import team.niiby.compiler.parser.TypeReference
@@ -23,6 +25,7 @@ internal fun typeSymbol(type: String): ClassDesc = when {
     type == "Integer" -> CD_int
     type == "Boolean" -> CD_boolean
     type == "Real" -> CD_double
+    type == STRING_VALUE_TYPE -> CD_String
     type == "Void" -> CD_void
     type in setOf("Class", "AnyRef", "AnyValue") -> CD_Object
     type.startsWith("Array[") -> typeSymbol(elementType(type)).arrayType()

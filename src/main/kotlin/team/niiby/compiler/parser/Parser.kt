@@ -252,7 +252,7 @@ class Parser(private val tokens: List<Token>) {
     }
 
     private fun parsePrimary(): Expression = when (peek().type) {
-        TokenType.INTEGER_LITERAL, TokenType.REAL_LITERAL, TokenType.BOOLEAN_LITERAL -> {
+        TokenType.INTEGER_LITERAL, TokenType.REAL_LITERAL, TokenType.BOOLEAN_LITERAL, TokenType.STRING_LITERAL -> {
             val literal = advance()
             LiteralExpression(literal.lexeme, literal.type, literal.span)
         }
@@ -272,7 +272,7 @@ class Parser(private val tokens: List<Token>) {
     }
 
     private fun canStartExpression(type: TokenType): Boolean = when (type) {
-        TokenType.INTEGER_LITERAL, TokenType.REAL_LITERAL, TokenType.BOOLEAN_LITERAL,
+        TokenType.INTEGER_LITERAL, TokenType.REAL_LITERAL, TokenType.BOOLEAN_LITERAL, TokenType.STRING_LITERAL,
         TokenType.IDENTIFIER, TokenType.THIS, TokenType.LEFT_PAREN, TokenType.PLUS, TokenType.MINUS,
         -> true
         else -> false

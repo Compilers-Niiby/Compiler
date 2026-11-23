@@ -84,23 +84,25 @@ Program @ 1:1
 ### Генерация и запуск байткода JVM
 
 ```bash
-mvn -q compile exec:java -Dexec.args="--generate examples/demo.o"
-javap -c -classpath target/generated-classes Counter
+mvn -q compile exec:java -Dexec.args="--generate examples/hello-sum.o"
+java -cp target/generated-classes HelloSum
 ```
 
-`--generate` проверяет программу и создаёт по одному `.class` на класс через Class-File API из JDK 25. По умолчанию файлы попадают в `target/generated-classes`. Свою папку можно указать после имени исходника. Если зависимости Maven уже скачаны, добавьте `-o` для сборки без сети.
-
-Чтобы вызвать `Counter.doubled()`, создайте небольшой Java-файл с методом `main` и запустите его. Он напечатает `10`.
+Метод `main` в `HelloSum` печатает `Hello, world!`, читает два целых числа и выводит сумму. Введите числа через пробел или на отдельных строках. Можно также передать их через стандартный ввод.
 
 ```bash
-cat > target/generated-classes/RunCounter.java <<'EOF'
-public class RunCounter {
-    public static void main(String[] args) {
-        System.out.println(new Counter().doubled());
-    }
-}
-EOF
-java -cp target/generated-classes target/generated-classes/RunCounter.java
+printf '7 5\n' | java -cp target/generated-classes HelloSum
+```
+
+В JDK 25 точкой входа может быть метод экземпляра `main` без параметров и возвращаемого значения. Встроенная функция `readInteger()` читает целое число, а `println(value)` печатает строку, число или логическое значение.
+
+`--generate` проверяет программу и создаёт файл `.class` для каждого класса через Class-File API из JDK 25. Для программ с `readInteger()` он также создаёт общий класс чтения ввода. По умолчанию файлы попадают в `target/generated-classes`. Свою папку можно указать после имени исходника. Если зависимости Maven уже скачаны, добавьте `-o` для сборки без сети.
+
+Чтобы посмотреть байткод счётчика из `examples/demo.o`, используйте `javap`.
+
+```bash
+mvn -q compile exec:java -Dexec.args="--generate examples/demo.o"
+javap -c -classpath target/generated-classes Counter
 ```
 
 Если у родительского класса объявлены конструкторы, для наследования нужен конструктор без параметров. Именно его вызывает сгенерированный конструктор дочернего класса.
@@ -112,7 +114,7 @@ java -cp target/generated-classes target/generated-classes/RunCounter.java
 - Конструкторы и методы с необязательными списками типизированных параметров
 - Тела методов в форме `is ... end` или `=> expression`
 - Присваивание, `while`, `if`/`else`, `return` и `for name in expression loop ... end`
-- Целочисленные, вещественные и логические литералы; имена; `this`; доступ к членам; цепочки вызовов и вызовы конструкторов с аргументами типов
+- Целочисленные, вещественные, логические и строковые литералы, имена, `this`, доступ к членам, цепочки вызовов и вызовы конструкторов с аргументами типов
 - Арифметические операции, сравнения, унарные `+`/`-` и скобки
 
 Парсер использует рекурсивный спуск. Операторы разбираются с учётом приоритета, а бинарные операции одного уровня группируются слева направо.
@@ -405,7 +407,7 @@ sequenceDiagram
 
 ## Реализованная грамматика
 
-Ниже правила реализованного синтаксиса в форме EBNF. Квадратные скобки обозначают необязательную часть, фигурные скобки обозначают повторение, а текст в кавычках соответствует токену исходного кода. `identifier`, `literal` и `EOF` поступают от лексера; литералы бывают целочисленными, вещественными и логическими.
+Ниже правила реализованного синтаксиса в форме EBNF. Квадратные скобки обозначают необязательную часть, фигурные скобки обозначают повторение, а текст в кавычках соответствует токену исходного кода. `identifier`, `literal` и `EOF` поступают от лексера. Литералы бывают целочисленными, вещественными, логическими и строковыми.
 
 ```ebnf
 program       = classDecl, { classDecl }, EOF ;
@@ -447,16 +449,16 @@ arguments     = "(", [ expression, { ",", expression } ], ")" ;
 
 ## Проверка
 
-Запустить тесты можно командами `make test`, `mvn test` или `.\mvnw.cmd test` на Windows. Сейчас в наборе 74 теста:
+Запустить тесты можно командами `make test`, `mvn test` или `.\mvnw.cmd test` на Windows. Сейчас в наборе 77 тестов:
 
 | Файл тестов | Количество | Что проверяется |
 | --- | --- | --- |
-| [`LexerTest.kt`](src/test/kotlin/team/niiby/compiler/lexer/LexerTest.kt) | 19 | Ключевые слова, литералы, символы, комментарии, позиции и лексические ошибки |
+| [`LexerTest.kt`](src/test/kotlin/team/niiby/compiler/lexer/LexerTest.kt) | 21 | Ключевые слова, литералы, символы, комментарии, позиции и лексические ошибки |
 | [`ParserTest.kt`](src/test/kotlin/team/niiby/compiler/parser/ParserTest.kt) | 34 | Структура AST, объявления, вложенные циклы и условия, приоритеты, цепочки вызовов, диапазоны, EOF и синтаксические ошибки |
 | [`AstPrinterTest.kt`](src/test/kotlin/team/niiby/compiler/parser/AstPrinterTest.kt) | 1 | Точный вывод дерева и позиции узлов для разобранного примера |
 | [`AnalyzerTest.kt`](src/test/kotlin/team/niiby/compiler/analyzer/AnalyzerTest.kt) | 9 | Имена, типы, вызовы, наследование, коллекции и неизменность AST |
 | [`OptimizerTest.kt`](src/test/kotlin/team/niiby/compiler/analyzer/OptimizerTest.kt) | 5 | Свёртка констант, упрощение управления, недостижимый код и сохранение областей видимости |
-| [`JvmGeneratorTest.kt`](src/test/kotlin/team/niiby/compiler/generator/JvmGeneratorTest.kt) | 6 | Загрузка и выполнение сгенерированных классов, наследование, перегрузки и диагностика |
+| [`JvmGeneratorTest.kt`](src/test/kotlin/team/niiby/compiler/generator/JvmGeneratorTest.kt) | 7 | Загрузка и запуск сгенерированных классов, ввод и вывод, наследование, перегрузки и диагностика |
 
 Тесты также разбирают файлы примеров. Они проверяют типы узлов, дочерние узлы и соответствующие участки исходного текста. Одной проверки успешного разбора недостаточно, чтобы обнаружить ошибку в структуре AST.
 
@@ -465,6 +467,7 @@ arguments     = "(", [ expression, { ",", expression } ], ")" ;
 ```text
 examples/
   demo.o                   Исходный пример для лексера
+  hello-sum.o              Консольная программа с main
   syntax.o                 Пример для синтаксического анализатора
 src/main/kotlin/team/niiby/compiler/
   Main.kt                  Режимы командной строки

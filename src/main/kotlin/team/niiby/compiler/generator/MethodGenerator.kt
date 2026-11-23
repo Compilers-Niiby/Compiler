@@ -205,9 +205,11 @@ internal class MethodGenerator(
     private fun invoke(node: Expression, receiver: Expression?, name: String, arguments: List<Expression>) {
         val constructor = semantics.constructors[node]
         val method = semantics.methods[node]
+        val consoleCall = semantics.consoleCalls[node]
         when {
             constructor != null -> construct(constructor, arguments)
             method != null -> invokeMethod(method, receiver, arguments)
+            consoleCall != null -> JvmConsole.emitCall(this, consoleCall, arguments)
             receiver == null -> builtins.construct(typeOf(node), arguments)
             else -> builtins.call(receiver, name, arguments)
         }

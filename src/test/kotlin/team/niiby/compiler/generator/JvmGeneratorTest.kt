@@ -1,9 +1,13 @@
 package team.niiby.compiler.generator
 
+import java.nio.file.Files
+import java.nio.file.Path
+import java.util.concurrent.TimeUnit
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
 import team.niiby.compiler.analyzer.SemanticException
 import team.niiby.compiler.lexer.Lexer
 import team.niiby.compiler.parser.Parser
@@ -15,6 +19,26 @@ class JvmGeneratorTest {
         override fun findClass(name: String): Class<*> {
             val bytes = files["$name.class"] ?: throw ClassNotFoundException(name)
             return defineClass(name, bytes, 0, bytes.size)
+        }
+    }
+
+    @Test
+    fun `HelloSum launches on the JVM and sums both console inputs`(@TempDir output: Path) {
+        val demo = Files.readString(Path.of("examples", "hello-sum.o"))
+        for ((name, bytes) in generate(demo)) Files.write(output.resolve(name), bytes)
+
+        val java = Path.of(System.getProperty("java.home"), "bin", "java").toString()
+        val process = ProcessBuilder(java, "-Xverify:all", "-cp", output.toString(), "HelloSum")
+            .redirectErrorStream(true)
+            .start()
+        try {
+            process.outputStream.bufferedWriter().use { it.write("-7 12\n") }
+            assertTrue(process.waitFor(10, TimeUnit.SECONDS), "HelloSum did not finish")
+            val lines = process.inputStream.bufferedReader().use { it.readLines() }
+            assertEquals(0, process.exitValue(), lines.joinToString("\n"))
+            assertEquals(listOf("Hello, world!", "Enter two integers:", "Sum:", "5"), lines)
+        } finally {
+            if (process.isAlive) process.destroyForcibly()
         }
     }
 
