@@ -1,7 +1,5 @@
 package team.niiby.compiler.generator
 
-import java.lang.classfile.CodeBuilder
-import java.lang.constant.MethodTypeDesc
 import team.niiby.compiler.analyzer.ResolvedConstructor
 import team.niiby.compiler.analyzer.ResolvedField
 import team.niiby.compiler.analyzer.ResolvedMethod
@@ -31,15 +29,17 @@ import team.niiby.compiler.parser.WhileStatement
 internal class MethodGenerator(
     private val semantics: SemanticInfo,
     private val classes: ClassGenerator,
-    val code: CodeBuilder,
+    private val owner: String,
     private val resultType: String,
     parameters: List<Parameter> = emptyList(),
 ) {
     private data class Local(val type: String, val slot: Int)
 
-    private var locals = parameters.mapIndexed { index, parameter ->
-        parameter.name to Local(parameter.type.typeName(), code.parameterSlot(index))
-    }.toMap(mutableMapOf())
+    val code = MethodCode().apply { local(owner) }
+    private var locals = parameters.associateTo(mutableMapOf()) { parameter ->
+        val type = parameter.type.typeName()
+        parameter.name to Local(type, code.local(type))
+    }
     private val builtins = BuiltinGenerator(this)
 
     fun typeOf(expression: Expression): String = semantics.types.getValue(expression)
@@ -92,9 +92,9 @@ internal class MethodGenerator(
             expressionAs(assignment.value, local.type)
             code.store(local.type, local.slot)
         } else {
-            code.aload(code.receiverSlot())
+            code.load(owner, 0)
             expressionAs(assignment.value, field.type)
-            code.writeField(typeSymbol(field.owner), field.name, field.type)
+            code.writeField(field.owner, field.name, field.type)
         }
     }
 
@@ -104,57 +104,40 @@ internal class MethodGenerator(
     }
 
     private fun conditional(statement: IfStatement): Boolean {
-        val otherwise = code.newLabel()
+        val otherwise = code.label()
         expression(statement.condition)
-        code.ifeq(otherwise)
+        code.wideBranch("ifne", otherwise, 1)
         val thenFallsThrough = block(statement.thenBranch)
         val elseBranch = statement.elseBranch
-        val end = if (thenFallsThrough && elseBranch != null) code.newLabel().also { code.goto_(it) } else null
-        code.labelBinding(otherwise)
+        val end = if (thenFallsThrough && elseBranch != null) code.label().also { code.jump(it) } else null
+        code.place(otherwise)
         val elseFallsThrough = elseBranch?.let { block(it) } ?: true
-        end?.let(code::labelBinding)
+        end?.let { code.place(it) }
         return thenFallsThrough || elseFallsThrough
     }
 
     private fun whileLoop(statement: WhileStatement) {
-        val start = code.newBoundLabel()
-        val end = code.newLabel()
+        val start = code.label()
+        val end = code.label()
+        code.place(start)
         expression(statement.condition)
-        code.ifeq(end)
-        if (block(statement.body)) code.goto_(start)
-        code.labelBinding(end)
+        code.wideBranch("ifne", end, 1)
+        if (block(statement.body)) code.jump(start)
+        code.place(end)
     }
 
     private fun forLoop(statement: ForStatement) {
         val collection = typeOf(statement.iterable)
         val element = elementType(collection)
-        val collectionSlot = code.local(collection)
-        val indexSlot = code.local("Integer")
         val elementSlot = code.local(element)
         expression(statement.iterable)
-        code.store(collection, collectionSlot)
-        code.iconst_0()
-        code.store("Integer", indexSlot)
-
-        val start = code.newBoundLabel()
-        val end = code.newLabel()
-        code.load("Integer", indexSlot)
-        code.load(collection, collectionSlot)
-        builtins.length(collection)
-        code.if_icmpge(end)
-        code.load(collection, collectionSlot)
-        code.load("Integer", indexSlot)
-        builtins.get(collection)
-        code.store(element, elementSlot)
-
-        val previous = locals.put(statement.variable, Local(element, elementSlot))
-        val fallsThrough = block(statement.body)
-        if (previous == null) locals.remove(statement.variable) else locals[statement.variable] = previous
-        if (fallsThrough) {
-            code.iinc(indexSlot, 1)
-            code.goto_(start)
+        builtins.forEachElement(collection) {
+            code.store(element, elementSlot)
+            val previous = locals.put(statement.variable, Local(element, elementSlot))
+            val fallsThrough = block(statement.body)
+            if (previous == null) locals.remove(statement.variable) else locals[statement.variable] = previous
+            fallsThrough
         }
-        code.labelBinding(end)
     }
 
     fun expressionAs(expression: Expression, expected: String) {
@@ -165,7 +148,7 @@ internal class MethodGenerator(
     fun expression(node: Expression) {
         when (node) {
             is LiteralExpression -> builtins.literal(node)
-            is ThisExpression -> code.aload(code.receiverSlot())
+            is ThisExpression -> code.load(owner, 0)
             is GroupedExpression -> expression(node.expression)
             is UnaryExpression -> builtins.unary(node)
             is BinaryExpression -> builtins.binary(node.operator, node.left, node.right)
@@ -197,8 +180,10 @@ internal class MethodGenerator(
             builtins.constant(field.owner, field.name)
         } else {
             loadReceiver(receiver)
-            val owner = typeSymbol(field.owner)
-            code.invokevirtual(owner, getterName(owner, field.name), MethodTypeDesc.of(typeSymbol(field.type)))
+            code.emit(
+                "invokevirtual ${jvmClassName(field.owner)}/${getterName(field.owner, field.name)}()${descriptor(field.type)}",
+                pops = 1, pushes = slots(field.type),
+            )
         }
     }
 
@@ -216,7 +201,7 @@ internal class MethodGenerator(
     }
 
     private fun construct(binding: ResolvedConstructor, arguments: List<Expression>) {
-        val type = typeSymbol(binding.owner)
+        val type = jvmClassName(binding.owner)
         val parameters = binding.declaration?.parameters.orEmpty()
         // Argument expressions can contain loops. Keep uninitialized references off their stacks.
         val argumentLocals = arguments.zip(parameters).map { (argument, parameter) ->
@@ -226,24 +211,33 @@ internal class MethodGenerator(
             code.store(parameterType, slot)
             Local(parameterType, slot)
         }
-        code.new_(type)
-        code.dup()
+        code.emit("new $type", pushes = 1)
+        code.emit("dup", pops = 1, pushes = 2)
         for (local in argumentLocals) code.load(local.type, local.slot)
-        repeat(classes.markers(binding.declaration)) { code.aconst_null() }
-        code.invokespecial(type, "<init>", classes.constructorSignature(binding.declaration))
+        val argumentSlots = argumentLocals.sumOf { slots(it.type) }
+        val markers = classes.markers(binding.declaration)
+        repeat(markers) { code.emit("aconst_null", pushes = 1) }
+        code.emit("invokespecial $type/<init>${classes.constructorDescriptor(binding.declaration)}", pops = 1 + argumentSlots + markers)
     }
 
     private fun invokeMethod(binding: ResolvedMethod, receiver: Expression?, arguments: List<Expression>) {
         val method = binding.declaration
+        val result = method.resultType()
         loadReceiver(receiver)
+        var argumentSlots = 0
         for ((argument, parameter) in arguments.zip(method.parameters)) {
-            expressionAs(argument, parameter.type.typeName())
+            val type = parameter.type.typeName()
+            expressionAs(argument, type)
+            argumentSlots += slots(type)
         }
-        code.invokevirtual(typeSymbol(binding.owner), method.jvmName(), method.jvmSignature())
+        code.emit(
+            "invokevirtual ${jvmClassName(binding.owner)}/${method.jvmSignature()}",
+            pops = 1 + argumentSlots, pushes = slots(result),
+        )
     }
 
     private fun loadReceiver(receiver: Expression?) {
-        if (receiver == null) code.aload(code.receiverSlot()) else expression(receiver)
+        if (receiver == null) code.load(owner, 0) else expression(receiver)
     }
 
     fun fail(node: AstNode, message: String): Nothing = throw GenerationException(message, node.span.start)

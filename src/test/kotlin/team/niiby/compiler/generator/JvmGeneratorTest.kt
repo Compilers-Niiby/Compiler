@@ -175,7 +175,7 @@ class JvmGeneratorTest {
     }
 
     @Test
-    fun `class files keep source names and can call methods named after Object methods`() {
+    fun `Jasmin keywords can be used as class names and Object method names remain callable`() {
         val files = generate(
             """
             class public is
@@ -186,10 +186,39 @@ class JvmGeneratorTest {
             """.trimIndent(),
         )
 
-        assertEquals(setOf("public.class", "Use.class"), files.keys)
+        assertEquals(setOf("\$public.class", "Use.class"), files.keys)
         val use = GeneratedClasses(files).loadClass("Use")
-        assertEquals("public", use.superclass.name)
+        assertEquals("\$public", use.superclass.name)
         assertEquals(42, use.getMethod("run").invoke(use.getConstructor().newInstance()))
+    }
+
+    @Test
+    fun `Jasmin source assembles strings with escapes and Unicode`() {
+        val source = """class Message is method value : AnyRef => "Привет \"мир\"!\n🌍" end"""
+        val program = Parser(Lexer(source).tokenize()).parse()
+        val assembly = JasminGenerator().generate(program).getValue("Message.j")
+        assertTrue(".method public value()Ljava/lang/Object;" in assembly)
+        assertTrue("ldc_w" in assembly)
+
+        val type = GeneratedClasses(JvmGenerator().generate(program)).loadClass("Message")
+        assertEquals("Привет \"мир\"!\n🌍", type.getMethod("value").invoke(type.getConstructor().newInstance()))
+    }
+
+    @Test
+    fun `conditions can skip blocks beyond short branch range`() {
+        val assignments = 5_600
+        val source = buildString {
+            appendLine("class WideBranch is method score(flag : Boolean) : Integer is")
+            appendLine("var count : 0 if flag then")
+            repeat(assignments) { appendLine("count := count + 1") }
+            appendLine("end return count end end")
+        }
+        val type = GeneratedClasses(generate(source)).loadClass("WideBranch")
+        val score = type.getMethod("score", Boolean::class.java)
+        val instance = type.getConstructor().newInstance()
+
+        assertEquals(0, score.invoke(instance, false))
+        assertEquals(assignments, score.invoke(instance, true))
     }
 
     @Test
