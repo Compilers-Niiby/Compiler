@@ -3,15 +3,12 @@ run_file_option := $(FILE)
 FILE ?= examples/demo.o
 OUT ?= tokens.txt
 
-# GNU Make sees the positional filename as a second goal.
+# GNU Make sees the positional filename and program arguments as extra goals.
 ifneq ($(filter runFile,$(MAKECMDGOALS)),)
 run_file_goal := $(filter-out runFile,$(MAKECMDGOALS))
 ifneq ($(run_file_goal),)
-ifneq ($(words $(run_file_goal)),1)
-$(error Specify one source file: make runFile path/to/program.o)
-endif
-ifeq ($(filter %.o,$(run_file_goal)),)
-$(error Specify an O source filename: make runFile path/to/program.o)
+ifeq ($(filter %.o,$(firstword $(run_file_goal))),)
+$(error Specify an O source filename: make runFile path/to/program.o [arguments...])
 endif
 .PHONY: $(run_file_goal)
 $(run_file_goal):
@@ -19,7 +16,9 @@ $(run_file_goal):
 endif
 endif
 
-run_file = $(or $(run_file_goal),$(run_file_option))
+run_file = $(or $(firstword $(run_file_goal)),$(run_file_option))
+# Negative numbers look like make options, so pass them with ARGS="-5 3".
+run_args = $(wordlist 2,$(words $(run_file_goal)),$(run_file_goal)) $(ARGS)
 shell_quote = '$(subst ','"'"',$(1))'
 
 .PHONY: help test run runFile stdin tokens parse ast clean
@@ -31,6 +30,8 @@ help:
 		'  make run                          Tokenize examples/demo.o' \
 		'  make run FILE=path/to/program.o   Tokenize another file' \
 		'  make runFile examples/hello-sum.o   Compile and run a program with main' \
+		'  make runFile examples/shapes.o 4 5 3  Pass arguments to the root class constructor' \
+		'  make runFile examples/scores.o ARGS="-2 8 1"  Arguments that start with -' \
 		'  make stdin                        Read O code from standard input' \
 		'  make tokens FILE=program.o        Save tokens to tokens.txt' \
 		'  make tokens FILE=program.o OUT=result.tokens' \
@@ -49,7 +50,7 @@ runFile:
 	if [ -z "$$source" ]; then printf '%s\n' 'Usage: make runFile path/to/program.o' >&2; exit 2; fi; \
 	if [ ! -f "$$source" ] && [ -f "examples/$$source" ]; then source="examples/$$source"; fi; \
 	if [ ! -f "$$source" ]; then printf 'Source file not found: %s\n' "$$source" >&2; exit 2; fi; \
-	exec $(MAVEN) -q compile exec:java "-Dexec.args=--run \"$$source\""
+	exec $(MAVEN) -q compile exec:java "-Dexec.args=--run \"$$source\" $(run_args)"
 
 stdin:
 	$(MAVEN) -q compile exec:java

@@ -1,0 +1,91 @@
+// Inheritance and a list of the base type. Run: make runFile shapes.o 4 5 3
+class Shape is
+    var sides : 0
+    method area : Real => 0.0
+    method describe : Integer => this.sides
+end
+
+class Rectangle extends Shape is
+    var width : 1.0
+    var height : 1.0
+
+    this is
+        this.sides := 4
+    end
+
+    this(w : Real, h : Real) is
+        this.width := w
+        this.height := h
+        this.sides := 4
+    end
+
+    method area : Real => this.width * this.height
+end
+
+class Square extends Rectangle is
+    this(side : Real) is
+        this.width := side
+        this.height := side
+        this.sides := 4
+    end
+end
+
+class Triangle extends Shape is
+    var base : 1.0
+    var height : 1.0
+
+    this(b : Real, h : Real) is
+        this.base := b
+        this.height := h
+        this.sides := 3
+    end
+
+    method area : Real => this.base * this.height / 2
+end
+
+class ShapesDemo is
+    var width : 2.0
+    var height : 3.0
+    var side : 2.0
+
+    this is
+    end
+
+    this(w : Real, h : Real, s : Real) is
+        width := w
+        height := h
+        side := s
+    end
+
+    method totalArea(shapes : List[Shape]) : Real is
+        var total : 0.0
+        for shape in shapes loop
+            total := total + shape.area()
+        end
+        return total
+    end
+
+    method totalSides(shapes : List[Shape]) : Integer is
+        var total : 0
+        for shape in shapes loop
+            total := total + shape.describe()
+        end
+        return total
+    end
+
+    method main is
+        var shapes : List[Shape]()
+        shapes.append(Rectangle(width, height))
+        shapes.append(Square(side))
+        shapes.append(Triangle(width, side))
+
+        println("Rectangle area:")
+        println(shapes.head.area())
+        println("Total area of all shapes:")
+        println(totalArea(shapes))
+        println("Total area without the rectangle:")
+        println(totalArea(shapes.tail))
+        println("Total number of sides:")
+        println(totalSides(shapes))
+    end
+end

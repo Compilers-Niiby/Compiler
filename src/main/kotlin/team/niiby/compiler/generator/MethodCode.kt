@@ -2,6 +2,7 @@ package team.niiby.compiler.generator
 
 internal class MethodCode {
     private val lines = mutableListOf<String>()
+    private val catches = mutableListOf<String>()
     private val labelDepths = mutableMapOf<String, Int>()
     private var nextLabel = 0
     private var depth: Int? = 0
@@ -110,6 +111,12 @@ internal class MethodCode {
         terminate("athrow", 1)
     }
 
+    // The handler starts with the caught exception as the only stack value.
+    fun catchBlock(exception: String, from: String, to: String, handler: String) {
+        labelDepths[handler] = 1
+        catches.add("    .catch $exception from $from to $to using $handler")
+    }
+
     fun render(signature: String, synthetic: Boolean = false): String = buildString {
         check(depth == null) { "Missing return in $signature" }
         appendLine(".method $signature")
@@ -117,6 +124,7 @@ internal class MethodCode {
         appendLine("    .limit stack $maxStack")
         appendLine("    .limit locals $maxLocals")
         lines.forEach { appendLine(it) }
+        catches.forEach { appendLine(it) }
         appendLine(".end method")
     }
 }

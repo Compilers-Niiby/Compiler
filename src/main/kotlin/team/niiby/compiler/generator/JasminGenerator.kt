@@ -17,6 +17,15 @@ class JasminGenerator {
         ClassGenerator(program, Analyzer().resolve(program)).generate()
 }
 
+// Constructor parameter types that a program can receive from the command line.
+private val ARGUMENT_PARSERS = mapOf(
+    "Integer" to "java/lang/Integer/parseInt(Ljava/lang/String;)I",
+    "Real" to "java/lang/Double/parseDouble(Ljava/lang/String;)D",
+    "Boolean" to "java/lang/Boolean/parseBoolean(Ljava/lang/String;)Z",
+)
+
+internal fun MethodDeclaration.isEntryPoint() = name == "main" && parameters.isEmpty() && returnType == null
+
 internal fun getterName(owner: String, field: String) = "\$read\$$owner\$$field"
 private fun initializerName(field: String) = "\$init\$$field"
 private fun stateName(field: String) = "\$state\$$field"
@@ -82,6 +91,84 @@ internal class ClassGenerator(program: Program, private val semantics: SemanticI
             appendLine(generateMethod(owner, method))
             for (result in bridgeResults(parentDeclaration, method)) appendLine(generateBridge(owner, method, result))
         }
+        if (declaration.members.any { it is MethodDeclaration && it.isEntryPoint() }) appendLine(generateLauncher(declaration))
+    }
+
+    // static main(String[]) converts command-line arguments, constructs the class, and calls its main method.
+    private fun generateLauncher(declaration: ClassDeclaration): String {
+        val className = jvmClassName(declaration.type.name)
+        val declared = declaration.members.filterIsInstance<ConstructorDeclaration>()
+        val launchable = (if (declared.isEmpty()) listOf(null) else declared)
+            .filter { constructor -> constructor?.parameters.orEmpty().all { it.type.typeName() in ARGUMENT_PARSERS } }
+            .distinctBy { it?.parameters.orEmpty().size }
+        val code = MethodCode()
+        val arguments = code.local("Class")
+        val invalid = code.label()
+        var parsesNumbers = false
+        for (constructor in launchable) {
+            val parameters = constructor?.parameters.orEmpty()
+            val next = code.label()
+            code.load("Class", arguments)
+            code.emit("arraylength", pops = 1, pushes = 1)
+            code.emit("bipush ${parameters.size}", pushes = 1)
+            code.branch("if_icmpne", next, 2)
+            val tryStart = code.label()
+            val tryEnd = code.label()
+            code.place(tryStart)
+            val values = parameters.mapIndexed { index, parameter ->
+                val type = parameter.type.typeName()
+                code.load("Class", arguments)
+                code.emit("bipush $index", pushes = 1)
+                code.emit("aaload", pops = 2, pushes = 1)
+                code.emit("invokestatic ${ARGUMENT_PARSERS.getValue(type)}", pops = 1, pushes = slots(type))
+                val slot = code.local(type)
+                code.store(type, slot)
+                type to slot
+            }
+            code.place(tryEnd)
+            if (parameters.isNotEmpty()) {
+                code.catchBlock("java/lang/NumberFormatException", tryStart, tryEnd, invalid)
+                parsesNumbers = true
+            }
+            code.emit("new $className", pushes = 1)
+            code.emit("dup", pops = 1, pushes = 2)
+            for ((type, slot) in values) code.load(type, slot)
+            val markers = markers(constructor)
+            repeat(markers) { code.emit("aconst_null", pushes = 1) }
+            code.emit(
+                "invokespecial $className/<init>${constructorDescriptor(constructor)}",
+                pops = 1 + values.sumOf { slots(it.first) } + markers,
+            )
+            code.emit("invokevirtual $className/main()V", pops = 1)
+            code.returnValue("Void")
+            code.place(next)
+        }
+        val counts = launchable.map { it?.parameters.orEmpty().size }.sorted()
+        printError(code, if (counts.isEmpty()) "${declaration.type.name} cannot be started with command-line arguments"
+            else "Expected ${counts.joinToString(" or ")} program argument(s)")
+        exit(code)
+        if (parsesNumbers) {
+            code.place(invalid)
+            printError(code, "Invalid program argument:")
+            code.emit("getstatic java/lang/System/err Ljava/io/PrintStream;", pushes = 1)
+            code.emit("swap", pops = 2, pushes = 2)
+            code.emit("invokevirtual java/lang/Throwable/getMessage()Ljava/lang/String;", pops = 1, pushes = 1)
+            code.emit("invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V", pops = 2)
+            exit(code)
+        }
+        return code.render("public static main([Ljava/lang/String;)V")
+    }
+
+    private fun printError(code: MethodCode, message: String) {
+        code.emit("getstatic java/lang/System/err Ljava/io/PrintStream;", pushes = 1)
+        code.string(message)
+        code.emit("invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V", pops = 2)
+    }
+
+    private fun exit(code: MethodCode) {
+        code.emit("iconst_1", pushes = 1)
+        code.emit("invokestatic java/lang/System/exit(I)V", pops = 1)
+        code.returnValue("Void")
     }
 
     private fun generateConstructor(

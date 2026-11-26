@@ -6,6 +6,7 @@ import team.niiby.compiler.analyzer.SemanticException
 import team.niiby.compiler.generator.GenerationException
 import team.niiby.compiler.generator.JasminGenerator
 import team.niiby.compiler.generator.JvmGenerator
+import team.niiby.compiler.generator.isEntryPoint
 import team.niiby.compiler.generator.jvmClassName
 import java.io.IOException
 import java.nio.file.Files
@@ -27,7 +28,7 @@ import team.niiby.compiler.parser.Program
 
 private const val USAGE = "Usage: compiler [--tokens|--parse|--analyze|--optimize] [source-file]\n" +
     "       compiler (--generate|--jasmin) [source-file] [output-directory]\n" +
-    "       compiler --run source-file"
+    "       compiler --run source-file [program-arguments...]"
 private val MODES = setOf("--tokens", "--parse", "--analyze", "--optimize", "--generate", "--jasmin", "--run")
 private const val DEFAULT_CLASS_OUTPUT = "target/generated-classes"
 private const val DEFAULT_JASMIN_OUTPUT = "target/jasmin"
@@ -43,7 +44,10 @@ fun main(args: Array<String>) {
 
     val option = args.firstOrNull()?.takeIf { it in MODES }
     val mode = option ?: "--tokens"
-    val files = if (option == null) args.toList() else args.drop(1)
+    val operands = if (option == null) args.toList() else args.drop(1)
+    // Everything after the source file of --run belongs to the O program.
+    val files = if (mode == "--run") operands.take(1) else operands
+    val programArguments = if (mode == "--run") operands.drop(1) else emptyList()
     val writesOutput = mode == "--generate" || mode == "--jasmin"
     val maxFiles = if (writesOutput) 2 else 1
     if (files.size > maxFiles || files.any { it.startsWith("--") } || mode == "--run" && files.isEmpty()) {
@@ -71,7 +75,7 @@ fun main(args: Array<String>) {
                     writeGeneratedFiles(output, sources)
                 }
                 "--run" -> {
-                    val status = runProgram(program)
+                    val status = runProgram(program, programArguments)
                     if (status != 0) exitProcess(status)
                 }
                 else -> {
@@ -102,10 +106,10 @@ fun main(args: Array<String>) {
     }
 }
 
-private fun runProgram(program: Program): Int {
+private fun runProgram(program: Program, arguments: List<String>): Int {
     val generated = JvmGenerator().generate(program)
     val entryPoints = program.classes.filter { declaration ->
-        declaration.members.any { it is MethodDeclaration && it.name == "main" && it.parameters.isEmpty() && it.returnType == null }
+        declaration.members.any { it is MethodDeclaration && it.isEntryPoint() }
     }
     val entryPoint = when (entryPoints.size) {
         0 -> throw GenerationException("Expected a parameterless method main without a return type", program.span.start)
@@ -119,7 +123,7 @@ private fun runProgram(program: Program): Int {
     try {
         writeGeneratedFiles(output, generated)
         val java = Path.of(System.getProperty("java.home"), "bin", "java")
-        return ProcessBuilder(java.toString(), "-cp", output.toString(), entryPoint).inheritIO().start().waitFor()
+        return ProcessBuilder(listOf(java.toString(), "-cp", output.toString(), entryPoint) + arguments).inheritIO().start().waitFor()
     } finally {
         for (name in generated.keys) Files.deleteIfExists(output.resolve(name))
         Files.deleteIfExists(output)

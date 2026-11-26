@@ -1,0 +1,53 @@
+// Arrays and lists. Run: make runFile scores.o 7 5 9
+class Scores is
+    var first : 7
+    var second : 5
+    var third : 9
+
+    this is
+    end
+
+    this(a : Integer, b : Integer, c : Integer) is
+        first := a
+        second := b
+        third := c
+    end
+
+    method sum(values : List[Integer]) : Integer is
+        var total : 0
+        for value in values loop
+            total := total + value
+        end
+        return total
+    end
+
+    method best(values : List[Integer]) : Integer is
+        var result : values.head
+        for value in values loop
+            if value > result then
+                result := value
+            end
+        end
+        return result
+    end
+
+    method main is
+        var scores : Array[Integer](3)
+        scores.set(0, first)
+        scores.set(1, second)
+        scores.set(2, third)
+        var list : scores.toList
+        list.append(10)
+
+        println("Array length:")
+        println(scores.Length)
+        println("Sum:")
+        println(sum(list))
+        println("Best score:")
+        println(best(list))
+        println("Sum without the first score:")
+        println(sum(list.tail))
+        println("Last array element:")
+        println(scores.get(2))
+    end
+end
